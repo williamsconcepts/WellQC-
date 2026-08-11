@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, SyntheticEvent } from "react";
 import { Database, KeyRound, Mail, UserRound, LoaderCircle } from "lucide-react";
-
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -61,7 +60,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           )}
           <Field icon={<Mail className="w-4 h-4" />} label="Email address" value={email} onChange={setEmail} type="email" autoComplete="email" />
           <Field icon={<KeyRound className="w-4 h-4" />} label="Password" value={password} onChange={setPassword} type="password" autoComplete={isRegister ? "new-password" : "current-password"} hint={isRegister ? "At least 8 characters" : undefined} />
-          
+
           {isRegister && (
             <div>
               <span className="flex items-center gap-2 text-xs font-semibold text-slate-200 mb-1.5">

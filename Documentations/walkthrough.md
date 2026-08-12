@@ -42,10 +42,21 @@ We have designed, built, and verified **WellQC+**, an enterprise-grade cloud pla
 - **Admin Panel**: [admin/page.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/admin/page.tsx) RBAC role simulator, API tokens, and webhooks.
 - **FastAPI Python Microservice**: [services/python_parser/main.py](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/services/python_parser/main.py) standalone python service script for high-throughput lasio parsing.
 
+### 6. Public Landing Page & Team Showcase
+- **Responsive Landing Page**: [page.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/page.tsx) featuring Home hero section, About Us, 8-Member Team showcase, Product Services, Transparent Pricing (Starter, Pro, Enterprise), and Contact Us.
+- **8-Member Team Structure & Image Placeholders**:
+  - Displays cards for all 8 team roles: **2 Software Engineers** (SE-1, SE-2), **4 Data Analysts** (DA-1, DA-2, DA-3, DA-4), and **2 Cloud Engineers** (CE-1, CE-2).
+  - Includes explicit avatar image placeholder containers, initials fallback badges, customizable name fields, and role titles for easy member image/name customization.
+
+### 7. Stripe Freemium & Usage Enforcement
+- **Database Schema**: Added `tier` (default `"FREE"`), `freeChecksUsed` (default `0`), `stripeCustomerId`, and `stripeSubscriptionId` to `User` model in Neon PostgreSQL.
+- **Strict Check Limitation**: `/api/las/check` validates usage limits for free tier users. Upon reaching 2 free checks, returning status `402 Payment Required` with `limitReached: true`.
+- **UI Modal & Header Badge**: [upload/page.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx) and [header.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/ui/header.tsx) trigger a prominent **"Free Check Limit Reached (2/2 Used)"** modal blocking further log checks until upgraded to Pro ($49/mo).
+
 ## Verification Results
 
-1. **Prisma Database Generation & Seed**: Executed `prisma db push` and `prisma db seed` successfully, creating SQLite `dev.db` pre-populated with users, wells, LAS files, curves, and reports.
-2. **Production Build**: Executed `npm run build` with zero TypeScript errors and generated optimized static and dynamic routes for all 14 application pages.
+1. **Prisma Database Generation & Neon PostgreSQL Sync**: Executed `prisma db push` successfully, syncing the schema to Neon PostgreSQL with multi-tenant isolation, user tier tracking, and activity logging.
+2. **Production Build**: Executed `npm run build` with zero TypeScript errors and generated optimized static and dynamic routes for all 27 application endpoints.
 
 ## Relationship Between Standardiser, Quality Engine, and Uploaded LAS Files
 The Standardiser, Quality Engine, and LAS Exporter / Database Commit form a sequential, 3-stage data processing pipeline whenever a LAS file is uploaded:

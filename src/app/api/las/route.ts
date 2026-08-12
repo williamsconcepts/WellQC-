@@ -16,6 +16,22 @@ export async function POST(request: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
+
+    // Check freemium check limit
+    const userTier = user.tier || "FREE";
+    const checksUsed = user.freeChecksUsed ?? 0;
+    if (userTier === "FREE" && checksUsed >= 2) {
+      return NextResponse.json(
+        {
+          error: "Free limit reached. You have used your 2 free LAS log file checks. Upgrade to Pro for unlimited log checks.",
+          limitReached: true,
+          freeChecksUsed: checksUsed,
+          tier: userTier,
+        },
+        { status: 402 },
+      );
+    }
+
     const body = (await request.json()) as CommitLASRequest;
     const content = body.content?.trim();
     const fileName = body.fileName?.trim() || "uploaded-well-log.las";
@@ -197,6 +213,14 @@ export async function POST(request: Request) {
           details: `Committed ${fileName} for ${well.name}. Quality score: ${qa.overallScore}/100 (${qa.qualityGrade}).`,
         },
       });
+
+      // Increment usage count for free tier users
+      if ((user.tier || "FREE") === "FREE") {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { freeChecksUsed: { increment: 1 } },
+        });
+      }
 
       return { well, lasFile, report };
     }, { maxWait: 10_000, timeout: 30_000 });

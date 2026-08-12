@@ -1,13 +1,27 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const publicPaths = ["/login", "/register"];
+const publicAuthPaths = ["/login", "/register"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get("wellqc_session")?.value);
-  if (publicPaths.includes(pathname) && hasSession) return NextResponse.redirect(new URL("/dashboard", request.url));
-  if (!publicPaths.includes(pathname) && !hasSession) return NextResponse.redirect(new URL("/login", request.url));
+
+  // If user is on login/register and already logged in, send to dashboard
+  if (publicAuthPaths.includes(pathname) && hasSession) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // Root landing page is accessible to everyone
+  if (pathname === "/") {
+    return NextResponse.next();
+  }
+
+  // All other pages require session
+  if (!publicAuthPaths.includes(pathname) && !hasSession) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
   return NextResponse.next();
 }
 

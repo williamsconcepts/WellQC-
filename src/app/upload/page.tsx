@@ -65,12 +65,34 @@ export default function LASUploadPage() {
   const [saveError, setSaveError] = useState("");
   const [savedWell, setSavedWell] = useState<{ id: string; name: string; qualityScore: number } | null>(null);
   const [uploadQueue, setUploadQueue] = useState<QueuedLASFile[]>([]);
+  const [limitReachedModal, setLimitReachedModal] = useState(false);
 
-  const processFileContent = (content: string, name: string) => {
+  const checkFreemiumLimit = async () => {
+    try {
+      const response = await fetch("/api/las/check", { method: "POST" });
+      const data = await response.json();
+      if (response.status === 402 || data.limitReached) {
+        setLimitReachedModal(true);
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
+  const processFileContent = async (content: string, name: string) => {
     setIsProcessing(true);
     setSavedSuccess(false);
     setSaveError("");
     setSavedWell(null);
+
+    const allowed = await checkFreemiumLimit();
+    if (!allowed) {
+      setIsProcessing(false);
+      return;
+    }
+
     try {
       const parsed = parseLASContent(content);
       const qa = analyzeWellLogQuality(parsed);
@@ -105,6 +127,9 @@ export default function LASUploadPage() {
       setSaveError("Choose LAS or TXT files no larger than 20 MB.");
       return;
     }
+
+    const allowed = await checkFreemiumLimit();
+    if (!allowed) return;
 
     setIsProcessing(true);
     setSaveError("");
@@ -143,7 +168,7 @@ export default function LASUploadPage() {
 
   const handleSampleClick = (sample: SampleLASFile) => {
     setUploadQueue([]);
-    processFileContent(sample.content, sample.name);
+    void processFileContent(sample.content, sample.name);
   };
 
   const handleCleanedDataDownload = (format: "las" | "csv") => {
@@ -504,6 +529,60 @@ export default function LASUploadPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Freemium Limit Reached Modal */}
+        {limitReachedModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 text-center animate-in fade-in zoom-in duration-200">
+              <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-xl font-extrabold text-white">
+                  Free Check Limit Reached (2/2 Used)
+                </h3>
+                <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
+                  You have used your <strong className="text-white">2 free LAS log file checks</strong> on the Starter plan. Upgrade to <strong className="text-emerald-400">Pro Petrophysicist</strong> for unlimited checks, multi-track wireline rendering, and KNN imputation.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-left space-y-2.5 text-xs text-slate-300">
+                <div className="font-semibold text-slate-200 flex items-center justify-between">
+                  <span>Pro Plan Benefits:</span>
+                  <span className="text-emerald-400 font-mono font-bold">$49 / month</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Unlimited LAS File Audits &amp; QA Reports</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Interactive Wireline Track Viewer</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Machine Learning KNN Curve Imputation</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <a
+                  href="/api/checkout?plan=pro"
+                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all text-center"
+                >
+                  Upgrade to Pro ($49/mo)
+                </a>
+                <button
+                  onClick={() => setLimitReachedModal(false)}
+                  className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                >
+                  Close &amp; View Pricing
+                </button>
               </div>
             </div>
           </div>

@@ -10,8 +10,8 @@
 | Role | Count | Core Domain |
 |------|-------|-------------|
 | 🧑‍💻 Software Engineers | 2 | Platform Architecture, Full-Stack Development, AI Engine |
-| 📊 Data Analysts | 3 | Petrophysical Analysis, QA Methodology, Missing Value Research |
-| ☁️ Cloud Engineers | 3 | Infrastructure, Deployment, Database, Security |
+| 📊 Data Analysts | 4 | Petrophysical Analysis, QA Methodology, Missing Value Research, Reporting & Quality Audit |
+| ☁️ Cloud Engineers | 2 | Infrastructure, Deployment, Database, Security, Python Microservice |
 | **Total** | **8** | **WellQC+ End-to-End Delivery** |
 
 ---
@@ -112,9 +112,9 @@
 
 ---
 
-### Data Analyst 3 — Statistical Analytics, Reporting & Basin Intelligence Lead
+### Data Analyst 3 — Statistical Analytics & Basin Intelligence Lead
 
-**Primary Focus:** Aggregation analytics, field performance statistics, report generation, and basin-wide trend analysis.
+**Primary Focus:** Aggregation analytics, field performance statistics, and basin-wide trend analysis.
 
 **Owns these system components:**
 
@@ -123,18 +123,33 @@
 | Analytics Dashboard | [`analytics/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/analytics/page.tsx) | Operator comparison charts, error frequency & anomaly distribution histograms |
 | Well Comparison Module | [`comparison/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/comparison/page.tsx) | Side-by-side QA metric comparison across multiple wells |
 | Activity & Audit Trail | [`activity/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/activity/page.tsx) | Immutable audit log review and compliance trail analysis |
-| Reports & Exports | [`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports) | Manages PDF certificates, Excel workbooks, and CSV audit log generation |
-| Python Microservice Analytics | [`services/python_parser/main.py`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/services/python_parser/main.py) | Validates `lasio` / `pandas` processing pipeline, reviews `scikit-learn` ML outputs |
 
 **Key responsibilities:**
 - Define and track basin-level KPIs (average quality score, error rate by operator, field performance ranking)
-- Design executive-level PDF report templates for stakeholder meetings
 - Ensure the 7-day rolling trend charts on the command dashboard accurately represent basin telemetry
 - Coordinate with cloud engineers on data pipeline performance and query optimization
 
 ---
 
-## ☁️ Cloud Engineers (3)
+### Data Analyst 4 — Reporting & Quality Audit Lead
+
+**Primary Focus:** Executive PDF audit certificates, Excel export templates, CSV logging, and test file dataset validation.
+
+**Owns these system components:**
+
+| Component | File | Responsibility |
+|-----------|------|---------------|
+| Reports & Exports | [`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports) | Manages PDF certificates, Excel workbooks, and CSV audit log generation |
+| Niger Delta LAS Test Dataset | [`prisma/seed.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/prisma/seed.ts) | Validates test uploads against EXCELLENT, GOOD, POOR, and CRITICAL thresholds |
+
+**Key responsibilities:**
+- Design executive-level PDF report templates (jsPDF) for stakeholder meetings
+- Build Excel and CSV export templates for petrophysical compliance workflows
+- Validate quality engine scores across test LAS files
+
+---
+
+## ☁️ Cloud Engineers (2)
 
 ### Cloud Engineer 1 — Infrastructure Architecture & Environment Lead
 
@@ -157,45 +172,25 @@
 
 ---
 
-### Cloud Engineer 2 — Database, ORM & Data Persistence Lead
+### Cloud Engineer 2 — Database, Security & Microservice Lead
 
-**Primary Focus:** Database schema design, migrations, Prisma ORM management, and well data persistence layer.
+**Primary Focus:** Database schema design, migrations, Prisma ORM management, Python FastAPI microservice, and security.
 
 **Owns these system components:**
 
 | Component | File | Responsibility |
 |-----------|------|---------------|
 | Database Schema | [`prisma/schema.prisma`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/prisma/schema.prisma) | Well, User, LASFile, QualityReport, ActivityLog table definitions and relations |
-| Database Migrations | `prisma db push` | Schema migration, index management, production database upgrades |
+| Database Migrations | `prisma db push` | Schema migration, index management, Neon PostgreSQL production database upgrades |
 | Seed & Demo Data | [`prisma/seed.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/prisma) | Demo well data seeding for development and stakeholder demos |
-| Database Scaling | — | Configure PostgreSQL (production) via `DATABASE_URL` migration from SQLite (development) |
-
-**Key responsibilities:**
-- Design and maintain the normalized database schema for Wells, LAS files, quality reports, and audit trails
-- Manage Prisma schema migrations for both SQLite (local development) and PostgreSQL (production)
-- Optimize database queries powering the dashboard, analytics, and well management modules
-- Ensure data integrity with foreign keys, constraints, and index optimization
-
----
-
-### Cloud Engineer 3 — Python Microservice, Security & API Integration Lead
-
-**Primary Focus:** Python FastAPI backend service, security hardening, authentication infrastructure, and external API integrations.
-
-**Owns these system components:**
-
-| Component | File | Responsibility |
-|-----------|------|---------------|
 | Python FastAPI Microservice | [`services/python_parser/main.py`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/services/python_parser/main.py) | FastAPI server with `lasio`, `pandas`, `numpy`, and `scikit-learn` for high-throughput LAS processing |
-| Python Dependencies | [`services/python_parser/requirements.txt`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/services/python_parser/requirements.txt) | Manages `fastapi`, `uvicorn`, `lasio`, `pandas`, `numpy`, `scikit-learn` version pinning |
-| Auth Infrastructure | [`src/lib/auth.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/auth.ts) | JWT token generation, session validation, bcrypt password hashing |
-| Security Hardening | `.gitignore`, `.env` | Ensures secrets never enter version control, HTTPS configuration, CORS policy |
+| Multi-Tenant Security | [`src/lib/auth.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/auth.ts) | Strict query isolation by `ownerId`, JWT tokens, session validation |
 
 **Key responsibilities:**
-- Deploy and scale the Python FastAPI microservice (containerize with Docker or deploy to Cloud Run)
-- Maintain Python dependency security and version compatibility
-- Harden authentication — JWT expiry, refresh token rotation, password hashing (bcrypt)
-- Integrate external data sources (e.g., basin reference databases, well registry APIs) when required
+- Design and maintain normalized database schema for Wells, LAS files, quality reports, and audit trails
+- Manage Prisma schema migrations and Neon PostgreSQL database pooling
+- Deploy and maintain Python FastAPI microservice for batch LAS data processing
+- Ensure multi-tenant data isolation across all database queries
 
 ---
 
@@ -221,11 +216,11 @@ WellQC+ Team (8 Members)
 │
 ├── 📊 Data Analyst 1        →  Petrophysical Rules, Mnemonic Dictionary, Physical Limits
 ├── 📊 Data Analyst 2        →  Missing Value Research, KNN Benchmarking, Root Cause Diagnostics  
-├── 📊 Data Analyst 3        →  Analytics, Reporting, Basin KPIs, Well Comparison
+├── 📊 Data Analyst 3        →  Basin Intelligence, Dashboard KPIs, Field Ranking
+├── 📊 Data Analyst 4        →  Reporting & Quality Audit, PDF/Excel/CSV Exporters, Test Datasets
 │
 ├── ☁️ Cloud Engineer 1       →  Infrastructure, Deployment (Vercel), CI/CD, Environment Config
-├── ☁️ Cloud Engineer 2       →  Database Schema (Prisma), Migrations, PostgreSQL Scaling
-└── ☁️ Cloud Engineer 3       →  Python Microservice, Auth Security, API Integrations
+└── ☁️ Cloud Engineer 2       →  Database Schema (Prisma), Neon PostgreSQL, Python FastAPI Microservice
 ```
 
 ---

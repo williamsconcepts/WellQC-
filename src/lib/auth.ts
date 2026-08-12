@@ -11,18 +11,20 @@ export interface SessionUser {
   name: string;
   role: string;
   department: string;
+  tier?: string;
+  freeChecksUsed?: number;
 }
 
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
-  const derivedKey = await scrypt(password, salt, 64) as Buffer;
+  const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
   return `${salt}:${derivedKey.toString("hex")}`;
 }
 
 export async function verifyPassword(password: string, storedHash: string) {
   const [salt, hash] = storedHash.split(":");
   if (!salt || !hash) return false;
-  const derivedKey = await scrypt(password, salt, 64) as Buffer;
+  const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
   const expected = Buffer.from(hash, "hex");
   return expected.length === derivedKey.length && timingSafeEqual(expected, derivedKey);
 }
@@ -43,12 +45,51 @@ export function readSession(token: string | undefined): SessionUser | null {
   try {
     const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as SessionUser & { exp: number };
     if (!parsed.id || !parsed.email || !parsed.name || !parsed.exp || parsed.exp < Date.now()) return null;
-    return { id: parsed.id, email: parsed.email, name: parsed.name, role: parsed.role, department: parsed.department };
+    return {
+      id: parsed.id,
+      email: parsed.email,
+      name: parsed.name,
+      role: parsed.role,
+      department: parsed.department,
+      tier: parsed.tier || "FREE",
+      freeChecksUsed: parsed.freeChecksUsed || 0,
+    };
   } catch {
     return null;
   }
 }
 
 export async function getCurrentUser() {
-  return readSession((await cookies()).get("wellqc_session")?.value);
+  const sessionUser = readSession((await cookies()).get("wellqc_session")?.value);
+  if (!sessionUser) return null;
+
+  try {
+    const { db } = await import("@/lib/db");
+    const freshUser = await db.user.findUnique({
+      where: { id: sessionUser.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        department: true,
+        tier: true,
+        freeChecksUsed: true,
+      },
+    });
+
+    if (freshUser) {
+      return {
+        ...sessionUser,
+        role: freshUser.role,
+        department: freshUser.department || sessionUser.department,
+        tier: freshUser.tier,
+        freeChecksUsed: freshUser.freeChecksUsed,
+      };
+    }
+  } catch {
+    // Fall back to session token data if DB connection fails
+  }
+
+  return sessionUser;
 }

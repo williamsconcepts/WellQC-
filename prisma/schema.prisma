@@ -9,21 +9,28 @@ generator client {
 }
 
 model User {
-  id            String        @id @default(uuid())
-  email         String        @unique
-  name          String
-  passwordHash  String
-  role          String        @default("PETROPHYSICIST") // ADMIN, PETROPHYSICIST, DATA_ENGINEER, GEOSCIENTIST, VIEWER
-  department    String?       @default("Subsurface Analytics")
-  avatarUrl     String?
-  ndaAcceptedAt DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  
-  lasFiles      LASFile[]     @relation("UserUploads")
-  activityLogs  ActivityLog[]
-  apiTokens     APIToken[]
-  wells         Well[]
+  id                    String        @id @default(uuid())
+  email                 String        @unique
+  name                  String
+  passwordHash          String
+  role                  String        @default("PETROPHYSICIST") // ADMIN, PETROPHYSICIST, DATA_ENGINEER, GEOSCIENTIST, VIEWER
+  department            String?       @default("Subsurface Analytics")
+  avatarUrl             String?
+  ndaAcceptedAt         DateTime?
+
+  // Billing and Usage Tracking
+  tier                  String        @default("FREE") // "FREE", "PRO", "ENTERPRISE"
+  freeChecksUsed        Int           @default(0)
+  stripeCustomerId      String?       @unique
+  stripeSubscriptionId  String?       @unique
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  lasFiles              LASFile[]     @relation("UserUploads")
+  activityLogs          ActivityLog[]
+  apiTokens             APIToken[]
+  wells                 Well[]
 }
 
 model Field {

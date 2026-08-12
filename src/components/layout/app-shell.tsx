@@ -8,7 +8,13 @@ import { Header } from "@/components/ui/header";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [currentRole, setCurrentRole] = useState("PETROPHYSICIST");
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; department: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    name: string;
+    email: string;
+    department: string;
+    tier?: string;
+    freeChecksUsed?: number;
+  } | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -19,7 +25,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
       const { user } = await response.json();
       setCurrentRole(user.role || "PETROPHYSICIST");
-      setCurrentUser({ name: user.name, email: user.email, department: user.department || "Subsurface Analytics" });
+      setCurrentUser({
+        name: user.name,
+        email: user.email,
+        department: user.department || "Subsurface Analytics",
+        tier: user.tier || "FREE",
+        freeChecksUsed: user.freeChecksUsed ?? 0,
+      });
     }).catch(() => router.replace("/login"));
   }, [router]);
 

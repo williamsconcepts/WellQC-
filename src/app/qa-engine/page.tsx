@@ -68,6 +68,32 @@ export default function QAEnginePage() {
   const [activeLas, setActiveLas] = useState<ParsedLAS>(sampleBenchmarkLAS);
   const [lastImputationApplied, setLastImputationApplied] = useState<string | null>(null);
 
+  const [limitReachedModal, setLimitReachedModal] = useState(false);
+
+  const checkLimit = async () => {
+    try {
+      const res = await fetch("/api/las/check", { method: "POST" });
+      const data = await res.json();
+      if (res.status === 402 || data.limitReached) {
+        setLimitReachedModal(true);
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
+  const handleLaunchBenchmark = async () => {
+    const allowed = await checkLimit();
+    if (allowed) setModalOpen(true);
+  };
+
+  const handleRunQATest = async () => {
+    const allowed = await checkLimit();
+    if (allowed) setEvaluated(true);
+  };
+
   const handleApplyImputation = (updated: ParsedLAS, strategy: string, curve: string) => {
     setActiveLas(updated);
     setLastImputationApplied(`Applied ${strategy} imputation on curve ${curve}. Log updated successfully.`);
@@ -81,11 +107,11 @@ export default function QAEnginePage() {
           <div>
             <div className="flex items-center space-x-2">
               <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                Module 05 & 06 — Rule Engine & Missing Value Imputation
+                Module 05 &amp; 06 — Rule Engine &amp; Missing Value Imputation
               </span>
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight mt-1">
-              Data Quality Engine & Imputation Benchmark
+              Data Quality Engine &amp; Imputation Benchmark
             </h1>
             <p className="text-xs text-wellqc-muted font-mono mt-0.5">
               Tune boundary parameters, evaluate missing value root causes (Casing shoe, Washouts), and benchmark KNN vs Linear vs Median vs Row Dropping.
@@ -94,7 +120,7 @@ export default function QAEnginePage() {
 
           <div className="flex items-center space-x-3">
             <button
-              onClick={() => setModalOpen(true)}
+              onClick={handleLaunchBenchmark}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 hover:scale-[1.02] transition-all"
             >
               <Sparkles className="w-4 h-4" />
@@ -102,7 +128,7 @@ export default function QAEnginePage() {
             </button>
 
             <button
-              onClick={() => setEvaluated(true)}
+              onClick={handleRunQATest}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-wellqc-card border border-wellqc-border text-slate-200 hover:text-white font-bold text-xs"
             >
               <Play className="w-4 h-4 text-emerald-400" />
@@ -242,6 +268,41 @@ export default function QAEnginePage() {
           onClose={() => setModalOpen(false)}
           onApplyImputation={handleApplyImputation}
         />
+
+        {/* Freemium Limit Reached Modal */}
+        {limitReachedModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 text-center animate-in fade-in zoom-in duration-200">
+              <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-xl font-extrabold text-white">
+                  Free Check Limit Reached (2/2 Used)
+                </h3>
+                <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
+                  You have used your <strong className="text-white">2 free LAS log file checks</strong> on the Starter plan. Upgrade to <strong className="text-emerald-400">Pro Petrophysicist</strong> for unlimited checks and KNN imputation.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <a
+                  href="/api/checkout?plan=pro"
+                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all text-center"
+                >
+                  Upgrade to Pro ($49/mo)
+                </a>
+                <button
+                  onClick={() => setLimitReachedModal(false)}
+                  className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

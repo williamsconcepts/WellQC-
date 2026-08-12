@@ -96,9 +96,10 @@ Architecture    & Auth Setup  LAS Pipeline    Features      & Compliance     Lau
   - Implement `verifyPassword` using `crypto.timingSafeEqual` to prevent timing attacks.
   - Create `readSession` and `getCurrentUser` session helpers.
 - **SE2 (Full-Stack UI Lead)**
+  - Build public **Landing Page** (`src/app/page.tsx`) with Hero, About Us, Services, Pricing, and Contact sections, including sticky `landing-navbar.tsx`.
   - Build Auth API routes: `POST /api/auth/login`, `POST /api/auth/register`, `POST /api/auth/logout`, `GET /api/auth/me`.
   - Build `/login` and `/register` pages with form validation and httpOnly session cookies.
-  - Create root [`middleware.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/middleware.ts) protecting all app routes except `/login` and `/register`.
+  - Create root [`middleware.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/middleware.ts) protecting all app routes except `/login`, `/register`, and the public landing page.
   - Build responsive [`app-shell.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/layout/app-shell.tsx), [`sidebar.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/ui/sidebar.tsx) with mobile drawer navigation, and [`header.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/ui/header.tsx).
 
 ### 📊 Data Analysts
@@ -120,7 +121,7 @@ Architecture    & Auth Setup  LAS Pipeline    Features      & Compliance     Lau
   - Configure SSL/TLS enforcing HTTPS headers in `next.config.js` and Vercel edge routes.
   - Set up automated GitHub Actions workflow for linting and build checks on pull requests.
 - **CE2 (Database & Security Lead)**
-  - Finalize [`schema.prisma`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/prisma/schema.prisma): `User`, `Well`, `LASFile`, `Curve`, `QualityReport`, `Anomaly`, `ActivityLog`, `APIToken`, `Field`, `Operator`.
+  - Finalize [`schema.prisma`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/prisma/schema.prisma): `User` (including billing fields: `tier`, `freeChecksUsed`, `stripeCustomerId`, `stripeSubscriptionId`), `Well`, `LASFile`, `Curve`, `QualityReport`, `Anomaly`, `ActivityLog`, `APIToken`, `Field`, `Operator`.
   - Enforce data isolation by adding `ownerId` foreign key to `Well` with `@@index([ownerId])`.
   - Execute `npx prisma db push` to push schema to Neon PostgreSQL.
   - Build [`src/lib/db.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/db.ts) Prisma Client singleton to prevent dev HMR connection pool exhaustion.
@@ -228,6 +229,7 @@ Architecture    & Auth Setup  LAS Pipeline    Features      & Compliance     Lau
   - Implement NDA acceptance check in `getCurrentUser()` flow.
   - Build `/nda` page displaying Data Processing Agreement and "I Agree" button updating `user.ndaAcceptedAt`.
 - **SE2 (Full-Stack UI Lead)**
+  - Implement **Stripe Integration**: Add checkout API route (`/api/checkout`) and Stripe Webhook handler (`/api/webhooks/stripe`).
   - Build Activity Audit Trail page ([`activity/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/activity/page.tsx)) and `GET /api/activity`.
   - Build Well Comparison page ([`comparison/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/comparison/page.tsx)) for side-by-side QA comparison.
   - Implement Admin User Management page ([`admin/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/admin/page.tsx)).
@@ -247,6 +249,7 @@ Architecture    & Auth Setup  LAS Pipeline    Features      & Compliance     Lau
   - Execute concurrency load testing: simulate 20 concurrent LAS uploads and measure API response times.
   - Verify Vercel edge function timeouts and HTTPS SSL certificate status.
 - **CE2 (Database & Security Lead)**
+  - Implement **Freemium Check Middleware**: Wrap log processing logic to reject uploads with `402 Payment Required` if user is on `FREE` tier and `freeChecksUsed >= 2`.
   - Perform strict Multi-Tenant Data Isolation Audit across ALL API routes (`/api/wells`, `/api/wells/[id]`, `/api/dashboard`, `/api/analytics`, `/api/las`):
     - Verify every query enforces `where: { ownerId: user.id }` or `{ well: { ownerId: user.id } }`.
     - Verify cross-tenant URL access attempts return `404 Not Found`.
@@ -303,9 +306,9 @@ WellQC+ Development Team (8 Members)
 │    └─ S5: NDA Enforcement Gate          └─ S6: Code Review & Build Verification
 │
 ├── 🧑‍💻 SE2 (Full-Stack UI Lead)
-│    ├─ S1: Next.js Setup & Directory     ├─ S2: Auth UI, Middleware & Shell
+│    ├─ S1: Next.js Setup & Directory     ├─ S2: Landing Page, Auth & Shell
 │    ├─ S3: Upload UI & Well CRUD Pages   ├─ S4: Dashboard, QA Engine & Benchmark Modal
-│    └─ S5: Activity & Comparison Pages   └─ S6: UI Polish & Cross-Device Audit
+│    └─ S5: Stripe API & Audit Pages      └─ S6: UI Polish & Cross-Device Audit
 │
 ├── 📊 DA1 (Petrophysical Rules Lead)
 │    ├─ S1: Curve Physical Limits (8)     ├─ S2: Raw Mnemonic Alias Dictionary
@@ -333,9 +336,9 @@ WellQC+ Development Team (8 Members)
 │    └─ S5: Concurrency Load Testing      └─ S6: Production Release & Domain Config
 │
 └── ☁️ CE2 (Database & Security Lead)
-     ├─ S1: Neon PostgreSQL Provisioning  ├─ S2: Full Prisma Schema & Owner Index
+     ├─ S1: Neon PostgreSQL Provisioning  ├─ S2: Full Prisma Schema (w/ Billing) & Owner Index
      ├─ S3: Multi-Tenant DB Transaction   ├─ S4: FastAPI Python Microservice
-     └─ S5: Query-Level Data Isolation    └─ S6: Prod DB Migration & Python Deploy
+     └─ S5: Freemium Checks & Isolation   └─ S6: Prod DB Migration & Python Deploy
 ```
 
 ---

@@ -11,6 +11,8 @@ interface HeaderProps {
     name: string;
     email: string;
     department: string;
+    tier?: string;
+    freeChecksUsed?: number;
   };
   onLogout: () => void;
   onToggleMobileNav?: () => void;
@@ -26,6 +28,10 @@ export function Header({
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityListItem[]>([]);
+
+  const userTier = currentUser.tier || "FREE";
+  const checksUsed = currentUser.freeChecksUsed ?? 0;
+  const isFreeLimitReached = userTier === "FREE" && checksUsed >= 2;
 
   useEffect(() => {
     let cancelled = false;
@@ -86,11 +92,30 @@ export function Header({
       </div>
 
       {/* Right Toolbar Controls */}
-      <div className="flex items-center space-x-2 md:space-x-4">
-        {/* Workspace Region Selector */}
-        <div className="hidden lg:flex items-center space-x-2 text-xs text-wellqc-muted px-3 py-1 rounded-md bg-wellqc-card/40 border border-wellqc-border font-mono">
-          <Globe className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Global Basin Portal</span>
+      <div className="flex items-center space-x-2 md:space-x-3">
+        {/* Subscription Plan & Usage Badge */}
+        <div className="flex items-center space-x-2">
+          {userTier === "PRO" ? (
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-mono font-bold">
+              <span>PRO PLAN (UNLIMITED)</span>
+            </span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-mono font-semibold ${
+                isFreeLimitReached
+                  ? "bg-rose-500/20 border-rose-500/50 text-rose-300"
+                  : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+              }`}>
+                <span>FREE: {checksUsed}/2 Checks</span>
+              </span>
+              <a
+                href="/api/checkout?plan=pro"
+                className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 text-[11px] font-bold shadow-md transition-all whitespace-nowrap"
+              >
+                Upgrade
+              </a>
+            </div>
+          )}
         </div>
 
         {/* RBAC Role Switcher */}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, SyntheticEvent } from "react";
-import { Database, KeyRound, Mail, UserRound, LoaderCircle } from "lucide-react";
+import { Database, KeyRound, Mail, UserRound, LoaderCircle, Home } from "lucide-react";
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -41,14 +41,24 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   return (
     <main className="min-h-screen bg-wellqc-dark flex items-center justify-center p-5">
       <div className="w-full max-w-md border border-wellqc-border bg-wellqc-panel p-7 rounded-xl shadow-2xl">
-        <div className="flex items-center gap-3 mb-7">
-          <div className="w-10 h-10 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center">
-            <Database className="w-5 h-5 text-cyan-300" />
+        <div className="flex items-center justify-between mb-7">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center">
+              <Database className="w-5 h-5 text-cyan-300" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-white">WellQC+</h1>
+              <p className="text-xs text-wellqc-muted font-mono">Well log quality workspace</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-black text-white">WellQC+</h1>
-            <p className="text-xs text-wellqc-muted font-mono">Well log quality workspace</p>
-          </div>
+          <Link
+            href="/"
+            title="Back to home page"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-slate-400 hover:text-white hover:bg-slate-700/60 border border-transparent hover:border-slate-600 transition-all"
+          >
+            <Home className="w-3.5 h-3.5" />
+            Home
+          </Link>
         </div>
         <h2 className="text-lg font-bold text-white">{isRegister ? "Create your account" : "Sign in"}</h2>
         <p className="mt-1 text-xs text-wellqc-muted">
@@ -73,7 +83,6 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
                 className="w-full bg-wellqc-card border border-wellqc-border rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400 font-mono"
               >
                 <option value="PETROPHYSICIST">Petrophysicist (Default)</option>
-                <option value="ADMIN">System Administrator (ADMIN)</option>
                 <option value="DATA_ENGINEER">Data Engineer</option>
                 <option value="GEOSCIENTIST">Geoscientist</option>
                 <option value="VIEWER">Viewer (Read-Only)</option>

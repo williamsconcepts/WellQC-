@@ -37,9 +37,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.replace("/login");
+    router.replace("/");
     router.refresh();
   };
+
 
   if (!currentUser) return <div className="min-h-screen bg-wellqc-dark" />;
 

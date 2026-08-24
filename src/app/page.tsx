@@ -303,7 +303,7 @@ export default function LandingPage() {
                   title: "Software Engineer 1",
                   domain: "Core Engine & AI Lead",
                   description: "Architect of LAS Parser, Quality Scoring algorithms, AI Recommendation Engine, and Wireline Log Viewer.",
-                  image: "/team/se1.jpg", // Add photo URL e.g. "/team/se1.jpg"
+                  image: "/team/se1.webp", // Add photo URL e.g. "/team/se1.jpg"
                   initials: "WE",
                   badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
                   icon: Code,
@@ -314,18 +314,18 @@ export default function LandingPage() {
                   title: "Software Engineer 2",
                   domain: "Full-Stack UI & API Lead",
                   description: "Owner of Next.js App Shell, Auth System, Upload Workspace, REST APIs, and Mobile Responsiveness.",
-                  image: "/team/se2.jpg", // Drop se2.jpg into public/team/ to show photo
+                  image: "/team/se2.jpeg", // Drop se2.jpg into public/team/ to show photo
                   initials: "SE2",
                   badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
                   icon: Code,
                 },
                 {
                   id: "DA-1",
-                  name: "Ugochukwu Felix .N",
+                  name: "Nwashiole Felix Ugochukwu",
                   title: "Data Analyst 1",
                   domain: "Petrophysical Rules Lead",
                   description: "Defines physical min/max bounds, mnemonic alias dictionary, unit conversions, and domain validation.",
-                  image: "/team/da1.jpg", // Drop da1.jpg into public/team/ to show photo
+                  image: "/team/da1.jpeg", // Drop da1.jpg into public/team/ to show photo
                   initials: "DA1",
                   badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
                   icon: PieChart,
@@ -336,7 +336,7 @@ export default function LandingPage() {
                   title: "Data Analyst 2",
                   domain: "Imputation & ML Lead",
                   description: "Researches root causes of missing values and leads KNN & Spline imputation benchmarking metrics.",
-                  image: "/team/da2.jpg", // Drop da2.jpg into public/team/ to show photo
+                  image: "/team/da2.jpeg", // Drop da2.jpg into public/team/ to show photo
                   initials: "DA2",
                   badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
                   icon: PieChart,
@@ -347,18 +347,18 @@ export default function LandingPage() {
                   title: "Data Analyst 3",
                   domain: "Basin Intelligence Lead",
                   description: "Drives dashboard KPIs, 7-day trend metrics, field performance ranking, and basin anomaly aggregation.",
-                  image: "/team/da3.jpg", // Drop da3.jpg into public/team/ to show photo
+                  image: "/team/da3.jpeg", // Drop da3.jpg into public/team/ to show photo
                   initials: "DA3",
                   badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
                   icon: PieChart,
                 },
                 {
                   id: "DA-4",
-                  name: "Nsidi Sarah",
+                  name: "Nickson Sarah",
                   title: "Data Analyst 4",
                   domain: "Reporting & Quality Auditor",
                   description: "Manages PDF audit certificates, Excel workbooks, CSV export templates, and test file dataset validation.",
-                  image: "/team/da4.jpg", // Drop da4.jpg into public/team/ to show photo
+                  image: "/team/da4.jpeg", // Drop da4.jpg into public/team/ to show photo
                   initials: "DA4",
                   badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
                   icon: PieChart,
@@ -369,7 +369,7 @@ export default function LandingPage() {
                   title: "Cloud Engineer 1",
                   domain: "Infrastructure & DevOps",
                   description: "Manages Vercel deployment, SSL/HTTPS configuration, CI/CD GitHub Actions, and performance tuning.",
-                  image: "/team/ce1.jpg", // Drop ce1.jpg into public/team/ to show photo
+                  image: "/team/ce1.jpeg", // Drop ce1.jpg into public/team/ to show photo
                   initials: "CE1",
                   badgeColor: "bg-teal-500/20 text-teal-300 border-teal-500/30",
                   icon: Cloud,
@@ -380,7 +380,7 @@ export default function LandingPage() {
                   title: "Cloud Engineer 2",
                   domain: "Database, Security & FastAPI",
                   description: "Maintains Prisma ORM, Neon PostgreSQL multi-tenant isolation, and Python FastAPI microservice integration.",
-                  image: "/team/ce2.jpg", // Drop ce2.jpg into public/team/ to show photo
+                  image: "/team/ce2.jpeg", // Drop ce2.jpg into public/team/ to show photo
                   initials: "CE2",
                   badgeColor: "bg-teal-500/20 text-teal-300 border-teal-500/30",
                   icon: Cloud,

@@ -1,49 +1,45 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { initializePaystackTransaction, PAYSTACK_PLANS, PaymentCurrency } from "@/lib/paystack";
 
 export async function GET(request: Request) {
   try {
     const user = await getCurrentUser();
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
     if (!user) {
-      return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
+      return NextResponse.redirect(`${baseUrl}/login?returnUrl=/pricing`);
     }
 
     const { searchParams } = new URL(request.url);
-    const plan = searchParams.get("plan") || "pro";
+    const planParam = searchParams.get("plan") || "pro_monthly";
+    const currency = (searchParams.get("currency") || "NGN") as PaymentCurrency;
 
-    // Upgrade the user's tier to PRO upon checkout flow initiation
-    const updatedUser = await db.user.update({
-      where: { id: user.id },
-      data: {
-        tier: "PRO",
-        stripeCustomerId: `cus_demo_${Date.now()}`,
-        stripeSubscriptionId: `sub_demo_${Date.now()}`,
-      },
+    const planKey = planParam === "pro" ? "pro_monthly" : planParam;
+    const plan = PAYSTACK_PLANS[planKey] || PAYSTACK_PLANS.pro_monthly;
+    const amountInSubunits = currency === "USD" ? plan.centsUsd : plan.koboNgn;
+
+    const callbackUrl = `${baseUrl}/api/paystack/verify?plan=${plan.id}&currency=${currency}`;
+
+    const paystackRes = await initializePaystackTransaction({
+      email: user.email,
+      amount: amountInSubunits,
+      currency,
+      planId: plan.id,
+      userId: user.id,
+      userName: user.name,
+      callbackUrl,
     });
 
-    // Log the subscription activity
-    await db.activityLog.create({
-      data: {
-        userName: user.name,
-        userRole: user.role,
-        userId: user.id,
-        action: "UPGRADE_SUBSCRIPTION",
-        targetType: "USER",
-        targetId: user.id,
-        details: `Upgraded subscription tier to ${plan.toUpperCase()}. Unlimited LAS file checks enabled.`,
-      },
-    });
+    if (paystackRes.status && paystackRes.data?.authorization_url) {
+      return NextResponse.redirect(paystackRes.data.authorization_url);
+    }
 
-    // Redirect user back to the dashboard with success parameter
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${baseUrl}/dashboard?payment=success&tier=${updatedUser.tier}`);
+    return NextResponse.redirect(`${baseUrl}/pricing?error=init_failed`);
   } catch (error) {
     console.error("Checkout processing error:", error);
-    return NextResponse.json(
-      { error: "Failed to process checkout session." },
-      { status: 500 }
-    );
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    return NextResponse.redirect(`${baseUrl}/pricing?error=checkout_failed`);
   }
 }
 
@@ -54,24 +50,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
     }
 
-    const updatedUser = await db.user.update({
-      where: { id: user.id },
-      data: {
-        tier: "PRO",
-        stripeCustomerId: `cus_demo_${Date.now()}`,
-        stripeSubscriptionId: `sub_demo_${Date.now()}`,
-      },
+    const body = await request.json().catch(() => ({}));
+    const planParam = body.planId || body.plan || "pro_monthly";
+    const currency = (body.currency || "NGN") as PaymentCurrency;
+
+    const planKey = planParam === "pro" ? "pro_monthly" : planParam;
+    const plan = PAYSTACK_PLANS[planKey] || PAYSTACK_PLANS.pro_monthly;
+    const amountInSubunits = currency === "USD" ? plan.centsUsd : plan.koboNgn;
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const callbackUrl = `${baseUrl}/api/paystack/verify?plan=${plan.id}&currency=${currency}`;
+
+    const paystackRes = await initializePaystackTransaction({
+      email: user.email,
+      amount: amountInSubunits,
+      currency,
+      planId: plan.id,
+      userId: user.id,
+      userName: user.name,
+      callbackUrl,
     });
 
     return NextResponse.json({
-      message: "Subscription successfully upgraded to PRO.",
-      tier: updatedUser.tier,
-      freeChecksUsed: updatedUser.freeChecksUsed,
+      status: true,
+      authorizationUrl: paystackRes.data?.authorization_url,
+      reference: paystackRes.data?.reference,
+      accessCode: paystackRes.data?.access_code,
+      plan: plan.name,
     });
   } catch (error) {
     console.error("Checkout POST error:", error);
     return NextResponse.json(
-      { error: "Failed to process checkout." },
+      { error: "Failed to process checkout session." },
       { status: 500 }
     );
   }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { ImputationBenchmarkModal } from "@/components/well-log/imputation-benchmark-modal";
+import { PaymentModal } from "@/components/pricing/payment-modal";
 import { ParsedLAS } from "@/lib/las/parser";
 import {
   ShieldCheck,
@@ -69,6 +70,7 @@ export default function QAEnginePage() {
   const [lastImputationApplied, setLastImputationApplied] = useState<string | null>(null);
 
   const [limitReachedModal, setLimitReachedModal] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
   const checkLimit = async () => {
     try {
@@ -287,12 +289,16 @@ export default function QAEnginePage() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <a
-                  href="/api/checkout?plan=pro"
-                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all text-center"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLimitReachedModal(false);
+                    setPaymentModalOpen(true);
+                  }}
+                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all text-center cursor-pointer"
                 >
-                  Upgrade to Pro ($49/mo)
-                </a>
+                  Upgrade via Paystack (₦75k / $49)
+                </button>
                 <button
                   onClick={() => setLimitReachedModal(false)}
                   className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
@@ -303,6 +309,13 @@ export default function QAEnginePage() {
             </div>
           </div>
         )}
+
+        {/* Paystack Payment Modal */}
+        <PaymentModal
+          isOpen={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          defaultPlan="pro_monthly"
+        />
       </div>
     </AppShell>
   );

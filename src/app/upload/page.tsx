@@ -10,6 +10,7 @@ import { standardiseMnemonic } from "@/lib/las/standardiser";
 import { buildCleanedDataExport } from "@/lib/las/exporter";
 import { SAMPLE_LAS_FILES, SampleLASFile } from "@/lib/sample-las-files";
 import { WellLogViewer } from "@/components/well-log/log-viewer";
+import { PaymentModal } from "@/components/pricing/payment-modal";
 import {
   UploadCloud,
   FileText,
@@ -66,6 +67,7 @@ export default function LASUploadPage() {
   const [savedWell, setSavedWell] = useState<{ id: string; name: string; qualityScore: number } | null>(null);
   const [uploadQueue, setUploadQueue] = useState<QueuedLASFile[]>([]);
   const [limitReachedModal, setLimitReachedModal] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
   const checkFreemiumLimit = async () => {
     try {
@@ -554,7 +556,7 @@ export default function LASUploadPage() {
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-left space-y-2.5 text-xs text-slate-300">
                 <div className="font-semibold text-slate-200 flex items-center justify-between">
                   <span>Pro Plan Benefits:</span>
-                  <span className="text-emerald-400 font-mono font-bold">$49 / month</span>
+                  <span className="text-emerald-400 font-mono font-bold">₦75,000 / $49 mo</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -571,22 +573,41 @@ export default function LASUploadPage() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <a
-                  href="/api/checkout?plan=pro"
-                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all text-center"
-                >
-                  Upgrade to Pro ($49/mo)
-                </a>
                 <button
-                  onClick={() => setLimitReachedModal(false)}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                  type="button"
+                  onClick={() => {
+                    setLimitReachedModal(false);
+                    setPaymentModalOpen(true);
+                  }}
+                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all text-center cursor-pointer"
                 >
-                  Close &amp; View Pricing
+                  Upgrade via Paystack (₦75k / $49)
                 </button>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/pricing"
+                    className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-cyan-300 bg-slate-800 hover:bg-slate-700 transition-colors text-center"
+                  >
+                    View All Plans
+                  </Link>
+                  <button
+                    onClick={() => setLimitReachedModal(false)}
+                    className="py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
+
+        {/* Paystack Payment Modal */}
+        <PaymentModal
+          isOpen={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          defaultPlan="pro_monthly"
+        />
       </div>
     </AppShell>
   );

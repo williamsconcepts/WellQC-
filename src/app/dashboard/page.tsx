@@ -52,6 +52,27 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [paymentNotice, setPaymentNotice] = useState<{ status: string; plan?: string; ref?: string } | null>(null);
+
+  useEffect(() => {
+    // Check for payment callback params in URL
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const payment = urlParams.get("payment");
+      if (payment === "success") {
+        setPaymentNotice({
+          status: "success",
+          plan: urlParams.get("plan") || "Pro Petrophysicist Plan",
+          ref: urlParams.get("reference") || undefined,
+        });
+      } else if (payment === "failed" || payment === "error") {
+        setPaymentNotice({
+          status: "failed",
+          plan: urlParams.get("message") || "Payment processing could not be completed.",
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +114,51 @@ export default function DashboardPage() {
   return (
     <AppShell>
       <div className="space-y-6">
+        {paymentNotice && (
+          <div
+            className={`p-4 rounded-2xl border flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${
+              paymentNotice.status === "success"
+                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-200"
+                : "bg-rose-500/10 border-rose-500/40 text-rose-200"
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  paymentNotice.status === "success"
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : "bg-rose-500/20 text-rose-400"
+                }`}
+              >
+                {paymentNotice.status === "success" ? (
+                  <CheckCircle2 className="w-5 h-5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <div className="text-sm font-bold text-white">
+                  {paymentNotice.status === "success"
+                    ? `Payment Successful! Subscription Upgraded to PRO (${paymentNotice.plan})`
+                    : "Payment Incomplete or Cancelled"}
+                </div>
+                <div className="text-xs text-slate-300 font-mono">
+                  {paymentNotice.status === "success"
+                    ? `Unlimited LAS file audits & KNN imputation enabled. ${paymentNotice.ref ? `Transaction Ref: ${paymentNotice.ref}` : ""}`
+                    : paymentNotice.plan}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setPaymentNotice(null)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-wellqc-panel/60 border border-wellqc-border p-5 rounded-2xl">
           <div>
             <div className="flex items-center space-x-3">

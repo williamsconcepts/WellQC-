@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { LandingNavbar } from "@/components/landing-navbar";
+import { PaymentModal } from "@/components/pricing/payment-modal";
 import {
   Activity,
   CheckCircle2,
@@ -30,9 +31,16 @@ import {
   Code,
   PieChart,
   Cloud,
+  Lock,
+  CreditCard,
+  Building2,
+  Smartphone,
 } from "lucide-react";
 
 export default function LandingPage() {
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [pricingCurrency, setPricingCurrency] = useState<"NGN" | "USD">("NGN");
+
   // Contact form state
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [formData, setFormData] = useState({
@@ -540,14 +548,41 @@ export default function LandingPage() {
           <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
             <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Simple, Transparent Pricing</span>
+              <span>Paystack Supported Payment Gateway</span>
             </div>
             <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
               Start Free, Upgrade When You Grow
             </h2>
             <p className="text-slate-400 text-base">
-              Try WellQC+ completely free for your first 2 log files. No credit card required.
+              Try WellQC+ completely free for your first 2 log files. Upgrade seamlessly with Nigerian &amp; Global Cards, Bank Transfer, or USSD.
             </p>
+
+            {/* Currency Switcher */}
+            <div className="inline-flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-2xl shadow-inner mt-2">
+              <span className="text-xs text-slate-400 font-mono px-2">Currency:</span>
+              <button
+                type="button"
+                onClick={() => setPricingCurrency("NGN")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all ${
+                  pricingCurrency === "NGN"
+                    ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                ₦ NGN (Naira)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPricingCurrency("USD")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all ${
+                  pricingCurrency === "USD"
+                    ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                $ USD (Dollar)
+              </button>
+            </div>
           </div>
 
           {/* Pricing Grid */}
@@ -557,14 +592,14 @@ export default function LandingPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-bold text-white">Free Starter</h3>
-                  <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-xs font-semibold">
+                  <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-xs font-semibold font-mono">
                     Freemium
                   </span>
                 </div>
                 <p className="text-slate-400 text-xs mb-6">Perfect for evaluating WellQC+ with your own LAS files.</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-white">$0</span>
-                  <span className="text-slate-400 text-xs"> / 2 log file checks</span>
+                  <span className="text-4xl font-extrabold text-white font-mono">$0 / ₦0</span>
+                  <span className="text-slate-400 text-xs font-mono"> / 2 log file checks</span>
                 </div>
 
                 <ul className="space-y-3.5 text-sm text-slate-300 mb-8 border-t border-slate-800 pt-6">
@@ -597,21 +632,24 @@ export default function LandingPage() {
 
             {/* Pro Tier Card (Highlighted) */}
             <div className="bg-slate-900 rounded-2xl border-2 border-emerald-500 p-8 flex flex-col justify-between relative shadow-2xl shadow-emerald-500/10">
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 text-xs font-extrabold tracking-wider uppercase shadow-md">
-                Most Popular
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 text-xs font-extrabold tracking-wider uppercase shadow-md flex items-center gap-1">
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                <span>Most Popular</span>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-bold text-white">Pro Petrophysicist</h3>
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold">
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold font-mono">
                     Unlimited
                   </span>
                 </div>
                 <p className="text-slate-400 text-xs mb-6">Designed for active engineers and subsurface team leads.</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-white">$49</span>
-                  <span className="text-slate-400 text-xs"> / month</span>
+                  <span className="text-4xl font-extrabold text-white font-mono">
+                    {pricingCurrency === "NGN" ? "₦75,000" : "$49"}
+                  </span>
+                  <span className="text-slate-400 text-xs font-mono"> / month</span>
                 </div>
 
                 <ul className="space-y-3.5 text-sm text-slate-300 mb-8 border-t border-slate-800 pt-6">
@@ -642,12 +680,18 @@ export default function LandingPage() {
                 </ul>
               </div>
 
-              <Link
-                href="/register?plan=pro"
-                className="w-full text-center py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 hover:from-emerald-300 hover:to-cyan-300 shadow-lg shadow-emerald-500/25 transition-all"
-              >
-                Upgrade to Pro Plan
-              </Link>
+              <div className="space-y-2">
+                <Link
+                  href="/pricing"
+                  className="w-full text-center py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 hover:from-emerald-300 hover:to-cyan-300 shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-1.5"
+                >
+                  <span>View Plans &amp; Pay via Paystack</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+                <div className="text-center text-[10px] text-slate-400 font-mono">
+                  Cards (Verve/Visa/MC), Bank Transfer, USSD
+                </div>
+              </div>
             </div>
 
             {/* Enterprise Tier Card */}
@@ -655,14 +699,14 @@ export default function LandingPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-bold text-white">Enterprise</h3>
-                  <span className="px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-semibold">
+                  <span className="px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-semibold font-mono">
                     Custom
                   </span>
                 </div>
                 <p className="text-slate-400 text-xs mb-6">For E&amp;P corporations, service companies &amp; large teams.</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-white">Custom</span>
-                  <span className="text-slate-400 text-xs"> / tailored deployment</span>
+                  <span className="text-4xl font-extrabold text-white font-mono">Custom</span>
+                  <span className="text-slate-400 text-xs font-mono"> / tailored deployment</span>
                 </div>
 
                 <ul className="space-y-3.5 text-sm text-slate-300 mb-8 border-t border-slate-800 pt-6">
@@ -695,6 +739,25 @@ export default function LandingPage() {
               >
                 Contact Sales
               </Link>
+            </div>
+          </div>
+
+          {/* Paystack Trust Badge Banner on Landing Page */}
+          <div className="max-w-4xl mx-auto mt-12 p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-300">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-bold text-white block">Secured by Paystack Payment Gateway</span>
+                <span className="text-slate-400 text-[11px]">Instant automated subscription activation in Nigeria and globally.</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+              <span className="px-2 py-1 rounded bg-slate-950 border border-slate-800">Verve &amp; Mastercard</span>
+              <span className="px-2 py-1 rounded bg-slate-950 border border-slate-800">Bank Transfer</span>
+              <span className="px-2 py-1 rounded bg-slate-950 border border-slate-800">USSD</span>
             </div>
           </div>
         </div>
@@ -873,6 +936,13 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* Paystack Payment Modal */}
+      <PaymentModal
+        isOpen={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        defaultPlan="pro_monthly"
+      />
     </div>
   );
 }

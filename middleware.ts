@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const publicAuthPaths = ["/login", "/register"];
+const publicGeneralPaths = ["/", "/pricing"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -12,8 +13,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // Root landing page is accessible to everyone
-  if (pathname === "/") {
+  // Public general pages are accessible to everyone
+  if (publicGeneralPaths.includes(pathname)) {
     return NextResponse.next();
   }
 

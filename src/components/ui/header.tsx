@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ActivityListItem } from "@/lib/api-types";
 import { Search, Bell, Shield, ChevronDown, Check, Globe, LogOut, Menu } from "lucide-react";
+import { PaymentModal } from "@/components/pricing/payment-modal";
 
 interface HeaderProps {
   currentRole: string;
@@ -58,6 +59,8 @@ export function Header({
     };
   }, []);
 
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+
   const roles = [
     { id: "ADMIN", name: "Administrator", color: "text-purple-400 border-purple-500/40 bg-purple-500/10" },
     { id: "PETROPHYSICIST", name: "Petrophysicist", color: "text-cyan-400 border-cyan-500/40 bg-cyan-500/10" },
@@ -70,6 +73,13 @@ export function Header({
 
   return (
     <header className="h-16 bg-wellqc-panel/80 backdrop-blur-md border-b border-wellqc-border px-4 md:px-6 flex items-center justify-between sticky top-0 z-20">
+      {/* Payment Portal Modal */}
+      <PaymentModal
+        isOpen={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        defaultPlan="pro_monthly"
+      />
+
       {/* Left section with Mobile Menu Toggle & Global Search Bar */}
       <div className="flex items-center space-x-3 flex-1 max-w-xl">
         {/* Mobile Hamburger Button */}
@@ -108,12 +118,13 @@ export function Header({
               }`}>
                 <span>FREE: {checksUsed}/2 Checks</span>
               </span>
-              <a
-                href="/api/checkout?plan=pro"
-                className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 text-[11px] font-bold shadow-md transition-all whitespace-nowrap"
+              <button
+                type="button"
+                onClick={() => setPaymentModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 text-[11px] font-bold shadow-md transition-all whitespace-nowrap cursor-pointer"
               >
-                Upgrade
-              </a>
+                Upgrade (Paystack)
+              </button>
             </div>
           )}
         </div>

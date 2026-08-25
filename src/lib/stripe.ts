@@ -1,4 +1,5 @@
-// Helper for Stripe Checkout & Subscription management
+// Payment Gateway Helper — Bridged to Paystack for Nigeria & International payments
+import { PAYSTACK_PLANS } from "./paystack";
 
 export interface CheckoutSessionOptions {
   userId: string;
@@ -7,9 +8,7 @@ export interface CheckoutSessionOptions {
   returnUrl?: string;
 }
 
-export function getStripeCheckoutUrl({ userId, userEmail, plan = "pro" }: CheckoutSessionOptions): string {
-  // In a live production setup, this will call stripe.checkout.sessions.create.
-  // For demo & sandbox integration, we generate a structured checkout link.
+export function getStripeCheckoutUrl({ userId, userEmail, plan = "pro_monthly" }: CheckoutSessionOptions): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const params = new URLSearchParams({
     client_reference_id: userId,
@@ -19,5 +18,7 @@ export function getStripeCheckoutUrl({ userId, userEmail, plan = "pro" }: Checko
     cancel_url: `${baseUrl}/dashboard?payment=cancelled`,
   });
 
-  return `/api/checkout?${params.toString()}`;
+  return `/api/paystack/initialize?${params.toString()}`;
 }
+
+export { PAYSTACK_PLANS };

@@ -16,6 +16,7 @@ import {
   Activity,
   ChevronRight,
   Sparkles,
+  CreditCard,
   X,
 } from "lucide-react";
 
@@ -38,6 +39,7 @@ export function Sidebar({ currentRole, mobileOpen = false, onCloseMobileNav }: S
     { label: "Well Comparison", href: "/comparison", icon: GitCompare },
     { label: "Audit Reports", href: "/reports", icon: FileSpreadsheet },
     { label: "Activity Logs", href: "/activity", icon: History },
+    { label: "Pricing & Plans", href: "/pricing", icon: CreditCard },
   ];
 
   if (currentRole === "ADMIN") {

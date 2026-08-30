@@ -1,38 +1,71 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/ui/sidebar";
 import { Header } from "@/components/ui/header";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [currentRole, setCurrentRole] = useState("PETROPHYSICIST");
   const [currentUser, setCurrentUser] = useState<{
     name: string;
     email: string;
     department: string;
+    role?: string;
     tier?: string;
     freeChecksUsed?: number;
+    ndaAcceptedAt?: string | null;
   } | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/me", { cache: "no-store" }).then(async (response) => {
-      if (!response.ok) {
-        router.replace("/login");
-        return;
+    let active = true;
+
+    async function loadUser() {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!response.ok) {
+          if (active) router.replace("/login");
+          return;
+        }
+        const { user } = await response.json();
+        if (!active) return;
+
+        // Option A: NDA Gatekeeper Enforcement
+        // If user has not accepted NDA and is not currently on /nda, redirect to /nda
+        if (!user.ndaAcceptedAt && pathname !== "/nda") {
+          router.replace("/nda");
+          return;
+        }
+
+        setCurrentRole(user.role || "PETROPHYSICIST");
+        setCurrentUser({
+          name: user.name,
+          email: user.email,
+          department: user.department || "Subsurface Analytics",
+          role: user.role || "PETROPHYSICIST",
+          tier: user.tier || "FREE",
+          freeChecksUsed: user.freeChecksUsed ?? 0,
+          ndaAcceptedAt: user.ndaAcceptedAt || null,
+        });
+      } catch {
+        if (active) router.replace("/login");
       }
-      const { user } = await response.json();
-      setCurrentRole(user.role || "PETROPHYSICIST");
-      setCurrentUser({
-        name: user.name,
-        email: user.email,
-        department: user.department || "Subsurface Analytics",
-        tier: user.tier || "FREE",
-        freeChecksUsed: user.freeChecksUsed ?? 0,
-      });
-    }).catch(() => router.replace("/login"));
+    }
+
+    loadUser();
+
+    function handleUserUpdated() {
+      loadUser();
+    }
+
+    window.addEventListener("wellqc_user_updated", handleUserUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener("wellqc_user_updated", handleUserUpdated);
+    };
   }, [router]);
 
   const handleLogout = async () => {

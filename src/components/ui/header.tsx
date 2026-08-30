@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ActivityListItem } from "@/lib/api-types";
 import { Search, Bell, Shield, ChevronDown, Check, Globe, LogOut, Menu } from "lucide-react";
 import { PaymentModal } from "@/components/pricing/payment-modal";
@@ -12,6 +13,7 @@ interface HeaderProps {
     name: string;
     email: string;
     department: string;
+    role?: string;
     tier?: string;
     freeChecksUsed?: number;
   };
@@ -61,7 +63,7 @@ export function Header({
 
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
-  const roles = [
+  const allRoles = [
     { id: "ADMIN", name: "Administrator", color: "text-purple-400 border-purple-500/40 bg-purple-500/10" },
     { id: "PETROPHYSICIST", name: "Petrophysicist", color: "text-cyan-400 border-cyan-500/40 bg-cyan-500/10" },
     { id: "DATA_ENGINEER", name: "Data Engineer", color: "text-blue-400 border-blue-500/40 bg-blue-500/10" },
@@ -69,7 +71,12 @@ export function Header({
     { id: "VIEWER", name: "Viewer / Auditor", color: "text-slate-400 border-slate-500/40 bg-slate-500/10" },
   ];
 
-  const activeRoleObj = roles.find((r) => r.id === currentRole) || roles[1];
+  // Filter roles: Only show Administrator if user's actual account role is ADMIN
+  const availableRoles = allRoles.filter(
+    (r) => r.id !== "ADMIN" || currentUser.role === "ADMIN"
+  );
+
+  const activeRoleObj = availableRoles.find((r) => r.id === currentRole) || availableRoles[0] || allRoles[1];
 
   return (
     <header className="h-16 bg-wellqc-panel/80 backdrop-blur-md border-b border-wellqc-border px-4 md:px-6 flex items-center justify-between sticky top-0 z-20">
@@ -147,7 +154,7 @@ export function Header({
                 Simulate Role Access (RBAC)
               </div>
               <div className="py-1 space-y-0.5">
-                {roles.map((r) => (
+                {availableRoles.map((r) => (
                   <button
                     key={r.id}
                     onClick={() => {
@@ -208,13 +215,21 @@ export function Header({
 
         {/* User Profile */}
         <div className="flex items-center space-x-2 md:space-x-3 pl-2 border-l border-wellqc-border">
-          <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shadow-md">
-            {currentUser.name.charAt(0)}
-          </div>
-          <div className="hidden md:block text-left">
-            <div className="text-xs font-semibold text-slate-100">{currentUser.name}</div>
-            <div className="text-[10px] text-wellqc-muted font-mono">{currentUser.department}</div>
-          </div>
+          <Link
+            href="/profile"
+            className="flex items-center space-x-2.5 group hover:opacity-90 transition-opacity"
+            title="View User Profile & Billing Settings"
+          >
+            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shadow-md group-hover:scale-105 transition-transform border border-cyan-400/30">
+              {currentUser.name.charAt(0)}
+            </div>
+            <div className="hidden md:block text-left">
+              <div className="text-xs font-semibold text-slate-100 group-hover:text-cyan-300 transition-colors">
+                {currentUser.name}
+              </div>
+              <div className="text-[10px] text-wellqc-muted font-mono">{currentUser.department}</div>
+            </div>
+          </Link>
           <button
             onClick={onLogout}
             title="Sign out"

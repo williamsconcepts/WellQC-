@@ -13,6 +13,7 @@ export interface SessionUser {
   department: string;
   tier?: string;
   freeChecksUsed?: number;
+  ndaAcceptedAt?: string | null;
 }
 
 export async function hashPassword(password: string) {
@@ -53,6 +54,7 @@ export function readSession(token: string | undefined): SessionUser | null {
       department: parsed.department,
       tier: parsed.tier || "FREE",
       freeChecksUsed: parsed.freeChecksUsed || 0,
+      ndaAcceptedAt: parsed.ndaAcceptedAt || null,
     };
   } catch {
     return null;
@@ -75,6 +77,7 @@ export async function getCurrentUser() {
         department: true,
         tier: true,
         freeChecksUsed: true,
+        ndaAcceptedAt: true,
       },
     });
 
@@ -85,6 +88,7 @@ export async function getCurrentUser() {
         department: freshUser.department || sessionUser.department,
         tier: freshUser.tier,
         freeChecksUsed: freshUser.freeChecksUsed,
+        ndaAcceptedAt: freshUser.ndaAcceptedAt ? freshUser.ndaAcceptedAt.toISOString() : null,
       };
     }
   } catch {

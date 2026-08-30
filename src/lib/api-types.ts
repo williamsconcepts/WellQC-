@@ -297,3 +297,38 @@ export interface AdminPanelResponse {
   apiTokens: AdminAPIToken[];
   webhooks: AdminWebhook[];
 }
+
+// ─── User Profile & Billing ───────────────────────────────────────────────────
+
+/** User profile details returned by GET /api/user/profile */
+export interface UserProfileDetails {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  department: string;
+  tier: "FREE" | "PRO" | "ENTERPRISE";
+  freeChecksUsed: number;
+  maxFreeChecks: number;
+  totalFilesUploaded: number;
+  ndaAcceptedAt: string | null;
+  createdAt: string;
+}
+
+/** Paystack payment transaction record */
+export interface PaymentRecord {
+  id: string;
+  reference: string;
+  planName: string;
+  amount: string;
+  channel: string;
+  status: string;
+  date: string;
+}
+
+/** Full response from GET /api/user/profile */
+export interface UserProfileResponse {
+  user: UserProfileDetails;
+  paymentRecords: PaymentRecord[];
+  recentActivity: ActivityListItem[];
+}

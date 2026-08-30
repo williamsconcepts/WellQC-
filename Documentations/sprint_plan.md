@@ -125,12 +125,13 @@ Architecture    & Auth Setup  LAS Ingestion   Visualisation Monetization     Rel
 ---
 
 ### 🔴 SPRINT 5 (Weeks 9–10): Security, Paystack Monetization & Freemium Enforcement (Current Active Sprint)
-* **Theme:** Paystack payment integration for Nigeria & global markets, freemium limit enforcement, activity audit trail, and multi-tenant security audit.
+* **Theme:** Paystack payment integration for Nigeria & global markets, freemium limit enforcement, User Profile & Billing management, activity audit trail, and multi-tenant security audit.
 * **SE1:** Review quality scoring and imputation pipeline for production edge cases; enforce NDA acceptance checks.
 * **SE2:**
   - Implement Paystack Payment Integration (`paystack.ts`) with Naira (₦ NGN) and Dollar ($ USD) currency support, card/transfer/USSD channels, and sandbox fallback.
   - Build `PaymentModal` using React `createPortal` with `z-[99999]` and public Pricing Portal (`/pricing`).
   - Build Paystack API routes: `/api/paystack/initialize`, `/api/paystack/verify`, `/api/paystack/webhook`, and `/api/checkout`.
+  - Build User Profile & Billing Management page (`/profile` & `/api/user/profile`) for managing account credentials, viewing Paystack transaction references, and managing subscriptions.
   - Build Activity Audit Trail (`activity/page.tsx`), Well Comparison (`comparison/page.tsx`), and Admin Panel (`admin/page.tsx`).
 * **DA1:** Audit anomaly messages and petrophysical physical boundaries for accuracy against Niger Delta reservoir data.
 * **DA2:** Validate KNN cross-validation metrics across test wells; confirm KNN achieves highest R² ($>0.92$) for `GR`/`RHOB` logs.

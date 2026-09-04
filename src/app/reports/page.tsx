@@ -6,6 +6,7 @@ import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { WellDetailResponse, WellListItem } from "@/lib/api-types";
+import { standardiseMnemonic } from "@/lib/las/standardiser";
 import {
   FileSpreadsheet,
   Download,
@@ -94,20 +95,24 @@ export default function ReportsPage() {
       // ── Cover block ─────────────────────────────────────────────────────────
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
+      doc.setTextColor(19, 27, 46);
       doc.text("WellQC+ | Well Log Quality Assurance Report", 14, 20);
 
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
+      doc.setTextColor(51, 65, 85);
       doc.text(`Well Name: ${detail.well.name}`, 14, 28);
       doc.text(`API/UWI: ${detail.well.apiNo}`, 14, 34);
       doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 40);
       doc.text(`Platform Grade: ${detail.well.qualityGrade} (${detail.well.qualityScore} / 100)`, 14, 46);
 
+      doc.setDrawColor(226, 232, 240);
       doc.line(14, 52, 196, 52);
 
       // ── Committed LAS summary ────────────────────────────────────────────────
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
+      doc.setTextColor(19, 27, 46);
       doc.text("Committed LAS Summary", 14, 62);
 
       (doc as any).autoTable({
@@ -128,135 +133,187 @@ export default function ReportsPage() {
           ["Anomaly Count", String(detail.well.anomalyCount)],
         ],
         headStyles: { fillColor: [19, 27, 46] },
-        styles: { fontSize: 9 },
+        styles: { fontSize: 8.5, cellPadding: 2.2 },
       });
 
+      let currentY = (doc as any).lastAutoTable?.finalY || 135;
+
       // ── AI Summary ───────────────────────────────────────────────────────────
-      let curY = (doc as any).lastAutoTable?.finalY || 120;
-      doc.setFontSize(12);
+      doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("AI Petrophysical Summary", 14, curY + 12);
-      doc.setFontSize(9);
+      doc.setTextColor(19, 27, 46);
+      doc.text("AI Petrophysical Summary", 14, currentY + 10);
+      doc.setFontSize(8.5);
       doc.setFont("helvetica", "normal");
-      doc.text(doc.splitTextToSize(detail.aiSummary, 180), 14, curY + 20);
+      doc.setTextColor(51, 65, 85);
+      const aiLines = doc.splitTextToSize(detail.aiSummary, 182);
+      doc.text(aiLines, 14, currentY + 16);
+      currentY += 16 + aiLines.length * 4.2;
 
       // ── Recommendations ──────────────────────────────────────────────────────
-      if (detail.recommendations.length > 0) {
-        curY = (doc as any).lastAutoTable?.finalY || curY + 40;
-        const aiTextLines = doc.splitTextToSize(detail.aiSummary, 180);
-        const aiTextHeight = aiTextLines.length * 4;
-        const recStart = curY + 20 + aiTextHeight + 8;
-        doc.setFontSize(12);
+      if (detail.recommendations && detail.recommendations.length > 0) {
+        doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        doc.text("Recommendations", 14, recStart);
-        doc.setFontSize(9);
+        doc.setTextColor(19, 27, 46);
+        doc.text("Recommendations", 14, currentY + 6);
+        doc.setFontSize(8.5);
         doc.setFont("helvetica", "normal");
+        doc.setTextColor(51, 65, 85);
+        let recY = currentY + 12;
         detail.recommendations.forEach((rec, i) => {
-          doc.text(`${i + 1}. ${rec}`, 18, recStart + 8 + i * 6);
+          const recLines = doc.splitTextToSize(`${i + 1}. ${rec}`, 178);
+          doc.text(recLines, 16, recY);
+          recY += recLines.length * 4.2 + 1.5;
         });
+        currentY = recY;
       }
 
-      // ── Curve Standardisation & Quality Inventory ────────────────────────────
-      if (detail.curveSummaries && detail.curveSummaries.length > 0) {
-        doc.addPage();
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "bold");
-        doc.text("Curve Standardisation & Quality Inventory", 14, 20);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          `${detail.curveSummaries.length} channel${detail.curveSummaries.length === 1 ? "" : "s"} detected in committed LAS file.`,
-          14,
-          28,
+      // ── 7 Core Curve Availability Table ───────────────────────────────────────
+      const CORE_CURVE_CONFIGS = [
+        { sn: 1, name: "Gamma Ray", standardMnemonic: "GR", defaultUnit: "GAPI" },
+        { sn: 2, name: "Bulk Density", standardMnemonic: "RHOB", defaultUnit: "G/CM3" },
+        { sn: 3, name: "Neutron Porosity", standardMnemonic: "NPHI", defaultUnit: "PU" },
+        { sn: 4, name: "Sonic", standardMnemonic: "DT", defaultUnit: "US/F" },
+        { sn: 5, name: "Deep Resistivity", standardMnemonic: "RT", defaultUnit: "OHM.M" },
+        { sn: 6, name: "Caliper", standardMnemonic: "CALI", defaultUnit: "IN" },
+        { sn: 7, name: "Spontaneous Potential", standardMnemonic: "SP", defaultUnit: "MV" },
+      ];
+
+      const coreCurveRows = CORE_CURVE_CONFIGS.map((core) => {
+        // 1. Check curveSummaries if available
+        let matchedSummary = detail.curveSummaries?.find(
+          (c) => c.standardMnemonic?.toUpperCase() === core.standardMnemonic
         );
 
-        (doc as any).autoTable({
-          startY: 34,
-          head: [
-            ["Raw Mnemonic", "Standard Name", "Unit", "Total Points", "Null Count", "Null %", "Min", "Max", "Mean", "Health Score", "Anomalies"],
-          ],
-          body: detail.curveSummaries.map((c) => [
-            c.mnemonic,
-            c.standardMnemonic || "UNKNOWN",
-            c.unit || "—",
-            c.totalPoints.toLocaleString(),
-            c.nullCount.toLocaleString(),
-            `${c.nullPercentage.toFixed(1)}%`,
-            c.minVal !== null ? c.minVal.toFixed(2) : "—",
-            c.maxVal !== null ? c.maxVal.toFixed(2) : "—",
-            c.meanVal !== null ? c.meanVal.toFixed(2) : "—",
-            `${c.healthScore}/100`,
-            c.anomalies?.length ? `${c.anomalies.length} flag${c.anomalies.length === 1 ? "" : "s"}` : "Clean",
-          ]),
-          headStyles: { fillColor: [0, 100, 130], fontSize: 7, halign: "center" },
-          styles: { fontSize: 7.5, cellPadding: 2 },
-          columnStyles: {
-            0: { fontStyle: "bold" },
-            9: { halign: "center" },
-            10: { halign: "center" },
-          },
-          didParseCell: (data: any) => {
-            if (data.section === "body" && data.column.index === 10) {
-              const text = String(data.cell.raw || "");
-              if (text.includes("flag")) {
-                data.cell.styles.textColor = [245, 158, 11]; // amber
-              } else {
-                data.cell.styles.textColor = [52, 211, 153]; // emerald
-              }
-            }
-            if (data.section === "body" && data.column.index === 9) {
-              const score = parseInt(String(data.cell.raw || "0"), 10);
-              if (score >= 90) data.cell.styles.textColor = [52, 211, 153];
-              else if (score >= 75) data.cell.styles.textColor = [34, 211, 238];
-              else if (score >= 50) data.cell.styles.textColor = [245, 158, 11];
-              else data.cell.styles.textColor = [248, 113, 113];
-            }
-          },
-        });
-      }
-
-      // ── Anomaly Detail Table ─────────────────────────────────────────────────
-      if (detail.anomalies && detail.anomalies.length > 0) {
-        const anomalyStart = (doc as any).lastAutoTable?.finalY
-          ? (doc as any).lastAutoTable.finalY + 14
-          : undefined;
-
-        if (!anomalyStart || anomalyStart > 240) {
-          doc.addPage();
+        if (!matchedSummary && detail.curveSummaries) {
+          matchedSummary = detail.curveSummaries.find((c) => {
+            const std = standardiseMnemonic(c.mnemonic);
+            return std.standardMnemonic === core.standardMnemonic;
+          });
         }
 
-        const aY = anomalyStart && anomalyStart <= 240 ? anomalyStart : 20;
-        doc.setFontSize(13);
-        doc.setFont("helvetica", "bold");
-        doc.text("Quality Anomaly Detail", 14, aY);
+        // 2. Check curvesData.curves if not matched in summaries
+        let detectedMnemonic = matchedSummary?.mnemonic || null;
+        let detectedUnit =
+          matchedSummary?.unit && matchedSummary.unit.trim() !== ""
+            ? matchedSummary.unit.toUpperCase()
+            : null;
 
-        (doc as any).autoTable({
-          startY: aY + 8,
-          head: [["Curve", "Type", "Severity", "Depth Start", "Depth End", "Description", "Suggested Correction"]],
-          body: detail.anomalies.map((a) => [
-            a.curveMnemonic,
-            a.anomalyType.replace(/_/g, " "),
-            a.severity,
-            a.depthStart.toFixed(2),
-            a.depthEnd.toFixed(2),
-            a.description,
-            a.suggestedCorrection,
-          ]),
-          headStyles: { fillColor: [80, 20, 20], fontSize: 7 },
-          styles: { fontSize: 7, cellPadding: 2 },
-          columnStyles: {
-            2: { halign: "center", fontStyle: "bold" },
-          },
-          didParseCell: (data: any) => {
-            if (data.section === "body" && data.column.index === 2) {
-              const sev = String(data.cell.raw || "");
-              if (sev === "CRITICAL") data.cell.styles.textColor = [248, 113, 113];
-              else if (sev === "WARNING") data.cell.styles.textColor = [245, 158, 11];
-              else data.cell.styles.textColor = [148, 163, 184];
-            }
-          },
-        });
+        if (!detectedMnemonic && detail.curvesData?.curves) {
+          const rawKeys = Object.keys(detail.curvesData.curves);
+          const foundKey = rawKeys.find(
+            (k) => standardiseMnemonic(k).standardMnemonic === core.standardMnemonic
+          );
+          if (foundKey) {
+            detectedMnemonic = foundKey;
+            const std = standardiseMnemonic(foundKey);
+            detectedUnit = std.standardUnit || core.defaultUnit;
+          }
+        }
+
+        const isFound = Boolean(detectedMnemonic);
+
+        return [
+          String(core.sn),
+          core.name,
+          core.standardMnemonic,
+          isFound ? "YES" : "NO",
+          isFound ? detectedMnemonic : "-",
+          isFound ? (detectedUnit || core.defaultUnit) : "-",
+          isFound ? "AVAILABLE" : "MISSING",
+        ];
+      });
+
+      // Page break check for 7 Core Curve Availability table
+      const tableHeightEstimate = 65;
+      if (currentY + tableHeightEstimate > 275) {
+        doc.addPage();
+        currentY = 20;
+
+        // Clean page 2 top header
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(15, 23, 42);
+        doc.text("WellQC+ | Well Log Quality Assurance Report", 14, currentY);
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Well: ${detail.well.name} (${detail.well.apiNo})`, 14, currentY + 5);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(14, currentY + 8, 196, currentY + 8);
+        currentY += 16;
+      } else {
+        currentY += 10;
       }
+
+      // 7 CORE CURVE AVAILABILITY header with cyan accent bar
+      doc.setFillColor(6, 182, 212); // Cyan-500
+      doc.rect(14, currentY, 3, 9, "F");
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text("7 CORE CURVE AVAILABILITY", 20, currentY + 7);
+
+      (doc as any).autoTable({
+        startY: currentY + 12,
+        head: [
+          ["S/N", "Core Curve", "Standard Mnemonic", "Found in Well?", "Detected Mnemonic", "Unit", "Status"],
+        ],
+        body: coreCurveRows,
+        headStyles: {
+          fillColor: [10, 20, 38], // Deep dark navy header
+          textColor: [148, 163, 184], // Slate-400
+          fontSize: 8,
+          fontStyle: "bold",
+          halign: "center",
+          cellPadding: 3,
+        },
+        bodyStyles: {
+          fillColor: [15, 23, 42], // Slate-900 dark background
+          textColor: [241, 245, 249], // Slate-100 text
+          fontSize: 8,
+          cellPadding: 3.2,
+          lineColor: [30, 41, 59], // Slate-800 subtle borders
+          lineWidth: 0.2,
+        },
+        alternateRowStyles: {
+          fillColor: [19, 29, 53], // Alternate row tone
+        },
+        columnStyles: {
+          0: { halign: "center", cellWidth: 14 },
+          1: { halign: "left", fontStyle: "bold", cellWidth: 44 },
+          2: { halign: "center", fontStyle: "bold", cellWidth: 26 },
+          3: { halign: "center", fontStyle: "bold", cellWidth: 26 },
+          4: { halign: "center", cellWidth: 26 },
+          5: { halign: "center", cellWidth: 20 },
+          6: { halign: "center", fontStyle: "bold", cellWidth: 26 },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === "body") {
+            // Column 3: Found in Well?
+            if (data.column.index === 3) {
+              const val = String(data.cell.raw || "");
+              if (val === "YES") {
+                data.cell.styles.textColor = [52, 211, 153]; // Emerald
+              } else {
+                data.cell.styles.textColor = [248, 113, 113]; // Rose
+              }
+            }
+            // Column 6: Status
+            if (data.column.index === 6) {
+              const val = String(data.cell.raw || "");
+              if (val === "AVAILABLE") {
+                data.cell.styles.textColor = [52, 211, 153]; // Emerald
+                data.cell.styles.fillColor = [6, 44, 40]; // Dark green badge
+              } else {
+                data.cell.styles.textColor = [248, 113, 113]; // Rose
+                data.cell.styles.fillColor = [60, 20, 25]; // Dark red badge
+              }
+            }
+          }
+        },
+      });
 
       doc.save(`${fileStem(detail.well.name)}_QA_Audit_Report.pdf`);
     });

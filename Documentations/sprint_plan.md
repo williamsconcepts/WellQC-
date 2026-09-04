@@ -149,10 +149,10 @@ Architecture    & Auth Setup  LAS Ingestion   Visualisation Monetization     Rel
 * `QuotaExceededError` handled gracefully — persistence silently skips on storage-full browsers.
 
 **DA4 — Enhanced PDF & Excel Export Reports** *(Completed 04 Sep 2026)*
-* **PDF Report** ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx)) — Extended from single-page to multi-page structure:
-  - Page 1: Well cover block (expanded to include Country, Lat/Long, Elevation, TD, Depth Unit), AI Petrophysical Summary, and numbered Recommendations list.
-  - Page 2: **Curve Standardisation & Quality Inventory** table — 11 columns (Raw Mnemonic, Standard Name, Unit, Total Points, Null Count, Null%, Min, Max, Mean, Health Score, Anomalies) with `didParseCell` colour-coding for health scores and anomaly flags.
-  - Page 2/3: **Quality Anomaly Detail** table — per-anomaly rows (Curve, Type, Severity, Depth Start, Depth End, Description, Suggested Correction) with CRITICAL/WARNING/INFO colour-coding.
+* **PDF Report** ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx)) — Streamlined Executive Petrophysical Certificate:
+  - Page 1: Well cover block (expanded to include Country, Lat/Long, Elevation, TD, Depth Unit), Committed LAS Summary (12 properties), AI Petrophysical Summary, and numbered Recommendations list.
+  - **7 Core Curve Availability Table**: High-contrast, dark slate/navy table checking availability of all 7 critical logging curves (Gamma Ray `GR`, Bulk Density `RHOB`, Neutron Porosity `NPHI`, Sonic `DT`, Deep Resistivity `RT`, Caliper `CALI`, and Spontaneous Potential `SP`) with S/N, Standard Mnemonic, Found in Well? (`YES`/`NO`), Detected Mnemonic, Unit, and Status (`AVAILABLE`/`MISSING`) with custom emerald and rose badges.
+  - Streamlined format: Removed the lengthy Curve Standardisation & Quality Inventory and Quality Anomaly Detail tables from the PDF certificate per reporting requirements.
 * **Excel Workbook** — Extended from 2 to 4 sheets:
   - `QA Summary`: Full well metadata (12 fields) + AI summary + numbered recommendations.
   - `Cleaned Curves`: Depth + all standardised curve numeric columns (unchanged).
@@ -219,8 +219,8 @@ WellQC+ Development Team (8 Members)
 ├── 📊 DA4 (Reporting & Quality Audit Lead)
 │    ├─ S1: PDF Audit Certificate Layout Specs    ├─ S2: 10 Niger Delta Test LAS Dataset
 │    ├─ S3: Quality Grade Range Verification      ├─ S4: PDF / Excel / CSV Exporters
-│    └─ S5: Enhanced PDF (Curve Inventory +       └─ S6: Demo Dataset Seeding & Sign-Off
-│           Anomaly Detail) & Excel (4 Sheets)
+│    └─ S5: Enhanced PDF (7 Core Curves Table)    └─ S6: Demo Dataset Seeding & Sign-Off
+│           & Excel Workbook (4 Sheets)
 │
 ├── ☁️ CE1 (DevOps, CI/CD & Performance Lead)
 │    ├─ S1: Vercel Project & Environment Setup    ├─ S2: SSL HTTPS & GitHub Actions CI/CD
@@ -244,8 +244,8 @@ WellQC+ Development Team (8 Members)
 | 5.3 | `extractCurveSummaries()` in `/api/wells/[id]` route | SE1 | ✅ Done | 04 Sep 2026 | `api/wells/[id]/route.ts` |
 | 5.4 | `CurveInventoryTable` integration in Well Detail page | SE2 | ✅ Done | 04 Sep 2026 | `wells/[id]/page.tsx` |
 | 5.5 | `localStorage` upload session persistence (`wellqc_upload_session`) | SE2 | ✅ Done | 04 Sep 2026 | `upload/page.tsx` |
-| 5.6 | PDF report — Curve Standardisation & Quality Inventory table (Page 2) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
-| 5.7 | PDF report — Quality Anomaly Detail table with severity colour-coding | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.6 | PDF report — 7 Core Curve Availability table (Gamma Ray, Bulk Density, etc.) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.7 | PDF report — Removed verbose curve inventory and anomaly detail tables | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.8 | PDF report — Expanded well metadata (Country, Lat/Long, Elevation, TD) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.9 | Excel workbook — `Curve Inventory` sheet (new, 3rd sheet) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.10 | Excel workbook — `Anomaly Log` sheet (new, conditional 4th sheet) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |

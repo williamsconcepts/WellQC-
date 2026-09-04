@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import Link from "next/link";
 import { WellLogViewer } from "@/components/well-log/log-viewer";
+import { CurveInventoryTable } from "@/components/well-log/curve-inventory-table";
 import { WellDetailResponse } from "@/lib/api-types";
 import {
   ArrowLeft,
@@ -140,14 +141,20 @@ export default function WellDetailPage({ params }: { params: Promise<{ id: strin
             </div>
 
             {hasLogData ? (
-              <WellLogViewer
-                wellName={well.name}
-                depthUnit={well.depthUnit}
-                startDepth={detail.curvesData.depth[0] ?? 0}
-                stopDepth={detail.curvesData.depth[detail.curvesData.depth.length - 1] ?? 0}
-                curvesData={detail.curvesData}
-                anomalies={detail.anomalies}
-              />
+              <div className="space-y-6">
+                <WellLogViewer
+                  wellName={well.name}
+                  depthUnit={well.depthUnit}
+                  startDepth={detail.curvesData.depth[0] ?? 0}
+                  stopDepth={detail.curvesData.depth[detail.curvesData.depth.length - 1] ?? 0}
+                  curvesData={detail.curvesData}
+                  anomalies={detail.anomalies}
+                />
+
+                {detail.curveSummaries && detail.curveSummaries.length > 0 && (
+                  <CurveInventoryTable curveSummaries={detail.curveSummaries} />
+                )}
+              </div>
             ) : (
               <div className="bg-wellqc-panel border border-wellqc-border rounded-2xl p-8 text-center space-y-3">
                 <Database className="w-8 h-8 text-cyan-400 mx-auto" />
@@ -163,6 +170,9 @@ export default function WellDetailPage({ params }: { params: Promise<{ id: strin
                   <span>Upload LAS</span>
                 </Link>
               </div>
+            )}
+            {detail.curveSummaries && detail.curveSummaries.length > 0 && !hasLogData && (
+              <CurveInventoryTable curveSummaries={detail.curveSummaries} />
             )}
           </>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import Link from "next/link";
 import { parseLASContent, ParsedLAS } from "@/lib/las/parser";
@@ -10,6 +10,7 @@ import { standardiseMnemonic } from "@/lib/las/standardiser";
 import { buildCleanedDataExport } from "@/lib/las/exporter";
 import { SAMPLE_LAS_FILES, SampleLASFile } from "@/lib/sample-las-files";
 import { WellLogViewer } from "@/components/well-log/log-viewer";
+import { CurveInventoryTable } from "@/components/well-log/curve-inventory-table";
 import { PaymentModal } from "@/components/pricing/payment-modal";
 import {
   UploadCloud,
@@ -25,6 +26,7 @@ import {
   Info,
   RefreshCw,
   X,
+  RotateCcw,
 } from "lucide-react";
 
 type UploadStatus = "ready" | "saving" | "saved" | "error";
@@ -68,6 +70,87 @@ export default function LASUploadPage() {
   const [uploadQueue, setUploadQueue] = useState<QueuedLASFile[]>([]);
   const [limitReachedModal, setLimitReachedModal] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [restoredFromStorage, setRestoredFromStorage] = useState(false);
+
+  // 1. Restore from localStorage on initial mount (in case user refreshed page)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("wellqc_upload_workspace");
+      if (saved) {
+        const session = JSON.parse(saved);
+        if (session && session.parsedLAS && session.qaResult) {
+          setFileName(session.fileName || "restored-well-log.las");
+          setRawText(session.rawText || "");
+          setParsedLAS(session.parsedLAS);
+          setQaResult(session.qaResult);
+          setAiOutput(session.aiOutput || null);
+          setSavedSuccess(Boolean(session.savedSuccess));
+          setSavedWell(session.savedWell || null);
+          if (Array.isArray(session.uploadQueue) && session.uploadQueue.length > 0) {
+            setUploadQueue(session.uploadQueue);
+          }
+          setRestoredFromStorage(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not restore upload session from localStorage", e);
+    }
+  }, []);
+
+  // 2. Persist state to localStorage on changes
+  useEffect(() => {
+    if (!parsedLAS || !qaResult) return;
+
+    try {
+      const payload = {
+        fileName,
+        rawText: rawText.length > 2_000_000 ? "" : rawText,
+        parsedLAS,
+        qaResult,
+        aiOutput,
+        savedSuccess,
+        savedWell,
+        uploadQueue: uploadQueue.map((item) => ({
+          ...item,
+          content: item.content.length > 500_000 ? "" : item.content,
+        })),
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem("wellqc_upload_workspace", JSON.stringify(payload));
+    } catch (err) {
+      console.warn("Storage quota exceeded or storage unavailable, falling back to lightweight payload", err);
+      try {
+        const minimal = {
+          fileName,
+          rawText: "",
+          parsedLAS,
+          qaResult,
+          aiOutput,
+          savedSuccess,
+          savedWell,
+          uploadQueue: [],
+          updatedAt: Date.now(),
+        };
+        localStorage.setItem("wellqc_upload_workspace", JSON.stringify(minimal));
+      } catch {}
+    }
+  }, [parsedLAS, qaResult, aiOutput, rawText, fileName, savedSuccess, savedWell, uploadQueue]);
+
+  const handleClearSession = () => {
+    try {
+      localStorage.removeItem("wellqc_upload_workspace");
+    } catch {}
+    setRawText("");
+    setFileName("");
+    setParsedLAS(null);
+    setQaResult(null);
+    setAiOutput(null);
+    setSavedSuccess(false);
+    setSavedWell(null);
+    setUploadQueue([]);
+    setSaveError("");
+    setRestoredFromStorage(false);
+  };
 
   const checkFreemiumLimit = async () => {
     try {
@@ -216,6 +299,20 @@ export default function LASUploadPage() {
       setUploadQueue((files) => files.map((file) => file.name === fileName
         ? { ...file, status: "saved", savedWell: result.well, error: undefined }
         : file));
+
+      // Cache latest committed well so Well Management can highlight and render curves instantly
+      try {
+        localStorage.setItem(
+          "wellqc_latest_committed_well",
+          JSON.stringify({
+            wellId: result.well.id,
+            wellName: result.well.name,
+            qualityScore: result.well.qualityScore,
+            curveSummaries: qaResult.curveSummaries,
+            timestamp: Date.now(),
+          }),
+        );
+      } catch {}
     } catch (error) {
       setSavedSuccess(false);
       setSaveError(error instanceof Error ? error.message : "Unable to commit this LAS file.");
@@ -237,6 +334,19 @@ export default function LASUploadPage() {
         const savedFile = { ...file, status: "saved" as const, savedWell: result.well, error: undefined };
         setUploadQueue((files) => files.map((item) => item.id === file.id ? savedFile : item));
         loadQueuedFile(savedFile);
+
+        try {
+          localStorage.setItem(
+            "wellqc_latest_committed_well",
+            JSON.stringify({
+              wellId: result.well.id,
+              wellName: result.well.name,
+              qualityScore: result.well.qualityScore,
+              curveSummaries: file.qa.curveSummaries,
+              timestamp: Date.now(),
+            }),
+          );
+        } catch {}
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to commit this LAS file.";
         setUploadQueue((files) => files.map((item) => item.id === file.id ? { ...item, status: "error", error: message } : item));
@@ -366,6 +476,44 @@ export default function LASUploadPage() {
           </div>
         )}
 
+        {/* Restored Session Banner */}
+        {restoredFromStorage && parsedLAS && (
+          <div className="bg-cyan-950/40 border border-cyan-500/40 rounded-2xl p-4 flex items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white font-mono flex items-center gap-2">
+                  <span>Session Restored from Local Storage</span>
+                  <span className="text-cyan-300">({fileName})</span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Your uploaded well curves, quality scores, and interpretation were preserved across page refresh.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleClearSession}
+                className="px-3 py-1.5 rounded-lg bg-wellqc-card hover:bg-wellqc-panel border border-wellqc-border hover:border-red-500/50 text-slate-300 hover:text-red-300 font-mono text-xs transition-all flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear &amp; Start New</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRestoredFromStorage(false)}
+                className="p-1.5 rounded-lg hover:bg-wellqc-card text-slate-400 hover:text-white"
+                title="Dismiss message"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* PARSED RESULTS WORKSPACE */}
         {parsedLAS && qaResult && aiOutput && !isProcessing && (
           <div className="space-y-6">
@@ -418,12 +566,21 @@ export default function LASUploadPage() {
                   </div>
                 )}
                 {savedWell && (
-                  <Link
-                    href={`/wells/${savedWell.id}`}
-                    className="block text-center text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 font-mono hover:border-emerald-400"
-                  >
-                    View saved well: {savedWell.name} ({savedWell.qualityScore}/100)
-                  </Link>
+                  <div className="space-y-1.5">
+                    <Link
+                      href={`/wells/${savedWell.id}`}
+                      className="block text-center text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 font-mono hover:border-emerald-400 font-bold transition-all"
+                    >
+                      View Well Log: {savedWell.name} ({savedWell.qualityScore}/100) →
+                    </Link>
+                    <Link
+                      href={`/wells?highlight=${savedWell.id}`}
+                      className="flex items-center justify-center space-x-1.5 text-center text-[11px] text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 rounded-lg px-3 py-1.5 font-mono hover:border-cyan-400 transition-all font-semibold"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>View Curves in Well Management</span>
+                    </Link>
+                  </div>
                 )}
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -446,9 +603,20 @@ export default function LASUploadPage() {
 
             {/* AI Summary Banner */}
             <div className="p-5 bg-gradient-to-r from-wellqc-panel via-wellqc-card to-wellqc-panel border border-cyan-500/30 rounded-2xl space-y-3 shadow-xl">
-              <div className="flex items-center space-x-2 text-sm font-bold text-cyan-300">
-                <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
-                <span>AI Automated Petrophysical Interpretation & Recommendations</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-sm font-bold text-cyan-300">
+                  <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
+                  <span>AI Automated Petrophysical Interpretation &amp; Recommendations</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSession}
+                  className="text-[11px] font-mono text-slate-400 hover:text-red-300 flex items-center gap-1 transition-colors"
+                  title="Clear current log and start fresh"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Clear Log</span>
+                </button>
               </div>
               <p className="text-xs text-slate-200 leading-relaxed font-mono bg-wellqc-dark/50 p-3 rounded-xl border border-wellqc-border">
                 {aiOutput.summary}
@@ -474,65 +642,10 @@ export default function LASUploadPage() {
             />
 
             {/* Curve Standardisation & Health Breakdown Table */}
-            <div className="bg-wellqc-panel border border-wellqc-border rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-wellqc-border">
-                <div className="flex items-center space-x-2">
-                  <Layers className="w-4 h-4 text-cyan-400" />
-                  <h3 className="text-base font-bold text-white">Curve Standardisation & Quality Inventory</h3>
-                </div>
-                <span className="text-xs text-slate-400 font-mono">{qaResult.curveSummaries.length} Channels Detected</span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead className="bg-wellqc-card border-b border-wellqc-border text-slate-400 uppercase text-[10px]">
-                    <tr>
-                      <th className="p-3">Raw Mnemonic</th>
-                      <th className="p-3">Standard Name</th>
-                      <th className="p-3">Unit</th>
-                      <th className="p-3">Null %</th>
-                      <th className="p-3">Range (Min – Max)</th>
-                      <th className="p-3">Health Score</th>
-                      <th className="p-3">Anomalies</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-wellqc-border text-slate-200">
-                    {qaResult.curveSummaries.map((c, i) => {
-                      const std = standardiseMnemonic(c.mnemonic, c.unit);
-                      return (
-                        <tr key={i} className="hover:bg-wellqc-card/50 transition-colors">
-                          <td className="p-3 font-bold text-white">{c.mnemonic}</td>
-                          <td className="p-3 text-cyan-300">
-                            <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30">
-                              {std.standardMnemonic} ({std.matchedName})
-                            </span>
-                          </td>
-                          <td className="p-3 text-slate-400">{c.unit || "—"}</td>
-                          <td className="p-3">{c.nullPercentage.toFixed(1)}%</td>
-                          <td className="p-3">
-                            {c.minVal !== null ? `${c.minVal.toFixed(2)} – ${c.maxVal?.toFixed(2)}` : "All Null"}
-                          </td>
-                          <td className="p-3 font-bold">
-                            <span className={c.healthScore >= 90 ? 'text-emerald-400' : c.healthScore >= 75 ? 'text-cyan-400' : 'text-amber-400'}>
-                              {c.healthScore}/100
-                            </span>
-                          </td>
-                          <td className="p-3">
-                            {c.anomalies.length > 0 ? (
-                              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px]">
-                                {c.anomalies.length} Flags
-                              </span>
-                            ) : (
-                              <span className="text-emerald-400 text-[10px]">Clean ✓</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <CurveInventoryTable
+              curveSummaries={qaResult.curveSummaries}
+              title="Curve Standardisation & Quality Inventory"
+            />
           </div>
         )}
 

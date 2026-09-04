@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { WellListItem } from "@/lib/api-types";
 import { getCurrentUser } from "@/lib/auth";
+import { CurveHealthSummary } from "@/lib/las/quality-engine";
 
 interface CreateWellRequest {
   name?: string;
@@ -27,6 +28,21 @@ export async function GET() {
           orderBy: { createdAt: "desc" },
           take: 1,
           include: {
+            curves: {
+              select: {
+                id: true,
+                originalMnemonic: true,
+                standardMnemonic: true,
+                unit: true,
+                nullCount: true,
+                totalPoints: true,
+                nullPercentage: true,
+                minVal: true,
+                maxVal: true,
+                meanVal: true,
+                status: true,
+              },
+            },
             reports: {
               orderBy: { createdAt: "desc" },
               take: 1,
@@ -129,6 +145,65 @@ export async function POST(request: Request) {
   }
 }
 
+function extractCurveSummaries(
+  latestReport: { reportJson?: string } | undefined,
+  latestLasFile:
+    | {
+        curves?: Array<{
+          id: string;
+          originalMnemonic: string;
+          standardMnemonic: string;
+          unit: string;
+          nullCount: number;
+          totalPoints: number;
+          nullPercentage: number;
+          minVal: number | null;
+          maxVal: number | null;
+          meanVal: number | null;
+          status: string;
+        }>;
+      }
+    | undefined,
+): CurveHealthSummary[] {
+  if (latestReport?.reportJson) {
+    try {
+      const parsedQa = JSON.parse(latestReport.reportJson);
+      if (Array.isArray(parsedQa.curveSummaries) && parsedQa.curveSummaries.length > 0) {
+        return parsedQa.curveSummaries;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  if (!latestLasFile?.curves || latestLasFile.curves.length === 0) {
+    return [];
+  }
+
+  return latestLasFile.curves.map((curve) => {
+    let healthScore = 100;
+    if (curve.nullPercentage > 50) healthScore -= 40;
+    else if (curve.nullPercentage > 20) healthScore -= 20;
+    else if (curve.nullPercentage > 5) healthScore -= 10;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+
+    return {
+      mnemonic: curve.originalMnemonic,
+      standardMnemonic: curve.standardMnemonic || "UNKNOWN",
+      unit: curve.unit || "",
+      nullCount: curve.nullCount || 0,
+      totalPoints: curve.totalPoints || 0,
+      nullPercentage: curve.nullPercentage || 0,
+      minVal: curve.minVal,
+      maxVal: curve.maxVal,
+      meanVal: curve.meanVal,
+      healthScore,
+      status: (curve.status === "VALID" ? "EXCELLENT" : curve.status === "STANDARDISED" ? "GOOD" : "POOR") as any,
+      anomalies: [],
+    };
+  });
+}
+
 function toWellListItem(well: {
   id: string;
   apiNo: string;
@@ -152,8 +227,22 @@ function toWellListItem(well: {
     originalName: string;
     curveCount: number;
     pointCount: number;
+    curves?: Array<{
+      id: string;
+      originalMnemonic: string;
+      standardMnemonic: string;
+      unit: string;
+      nullCount: number;
+      totalPoints: number;
+      nullPercentage: number;
+      minVal: number | null;
+      maxVal: number | null;
+      meanVal: number | null;
+      status: string;
+    }>;
     reports: Array<{
       id: string;
+      reportJson?: string;
       anomalyCount: number;
       _count: { anomalies: number };
     }>;
@@ -161,6 +250,7 @@ function toWellListItem(well: {
 }): WellListItem {
   const latestLasFile = well.lasFiles[0];
   const latestReport = latestLasFile?.reports[0];
+  const curveSummaries = extractCurveSummaries(latestReport, latestLasFile);
 
   return {
     id: well.id,
@@ -184,6 +274,7 @@ function toWellListItem(well: {
     curveCount: latestLasFile?.curveCount ?? 0,
     pointCount: latestLasFile?.pointCount ?? 0,
     anomalyCount: latestReport?._count.anomalies ?? latestReport?.anomalyCount ?? 0,
+    curveSummaries,
     createdAt: well.createdAt.toISOString(),
     updatedAt: well.updatedAt.toISOString(),
   };

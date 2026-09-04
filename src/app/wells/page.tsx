@@ -1,19 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import Link from "next/link";
 import { WellListItem } from "@/lib/api-types";
+import { CurveInventoryTable } from "@/components/well-log/curve-inventory-table";
+import { CurveHealthSummary } from "@/lib/las/quality-engine";
 import {
   Database,
   Plus,
   Search,
   Filter,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Trash2,
   Eye,
   RefreshCw,
   UploadCloud,
+  Layers,
+  Sparkles,
+  CheckCircle2,
+  X,
 } from "lucide-react";
 
 export default function WellManagementPage() {
@@ -24,6 +32,15 @@ export default function WellManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [expandedWellId, setExpandedWellId] = useState<string | null>(null);
+  const [curvesCache, setCurvesCache] = useState<Record<string, CurveHealthSummary[]>>({});
+  const [loadingCurvesFor, setLoadingCurvesFor] = useState<string | null>(null);
+  const [recentCommittedWell, setRecentCommittedWell] = useState<{
+    wellId: string;
+    wellName: string;
+    qualityScore: number;
+    timestamp: number;
+  } | null>(null);
 
   const [newWellName, setNewWellName] = useState("");
   const [newApiNo, setNewApiNo] = useState("");
@@ -35,7 +52,57 @@ export default function WellManagementPage() {
 
   useEffect(() => {
     loadWells();
+
+    // Check for recently committed well from localStorage
+    try {
+      const stored = localStorage.getItem("wellqc_latest_committed_well");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.wellId && parsed.wellName) {
+          // If created within last 24 hours
+          if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+            setRecentCommittedWell(parsed);
+            if (Array.isArray(parsed.curveSummaries) && parsed.curveSummaries.length > 0) {
+              setCurvesCache((prev) => ({ ...prev, [parsed.wellId]: parsed.curveSummaries }));
+            }
+          }
+        }
+      }
+    } catch {}
   }, []);
+
+  const toggleExpandWell = async (wellId: string, initialCurves?: CurveHealthSummary[]) => {
+    if (expandedWellId === wellId) {
+      setExpandedWellId(null);
+      return;
+    }
+
+    setExpandedWellId(wellId);
+
+    // If we already have curves in memory or on the well item, populate cache
+    if (initialCurves && initialCurves.length > 0) {
+      setCurvesCache((prev) => ({ ...prev, [wellId]: initialCurves }));
+      return;
+    }
+
+    if (curvesCache[wellId] && curvesCache[wellId].length > 0) {
+      return;
+    }
+
+    // Otherwise fetch details on the fly
+    setLoadingCurvesFor(wellId);
+    try {
+      const res = await fetch(`/api/wells/${wellId}`, { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok && data.curveSummaries) {
+        setCurvesCache((prev) => ({ ...prev, [wellId]: data.curveSummaries }));
+      }
+    } catch (e) {
+      console.error("Failed to load curves for well", e);
+    } finally {
+      setLoadingCurvesFor(null);
+    }
+  };
 
   const filteredWells = wells.filter((well) => {
     const needle = searchQuery.toLowerCase();
@@ -60,7 +127,25 @@ export default function WellManagementPage() {
         throw new Error(data.error || "Unable to load wells.");
       }
 
-      setWells(data.wells || []);
+      const fetchedWells: WellListItem[] = data.wells || [];
+      setWells(fetchedWells);
+
+      // Populate curves cache from fetched wells if available
+      const newCache: Record<string, CurveHealthSummary[]> = {};
+      fetchedWells.forEach((w) => {
+        if (w.curveSummaries && w.curveSummaries.length > 0) {
+          newCache[w.id] = w.curveSummaries;
+        }
+      });
+      setCurvesCache((prev) => ({ ...newCache, ...prev }));
+
+      // If URL has ?highlight=wellId, auto-expand that well
+      if (typeof window !== "undefined") {
+        const highlightId = new URLSearchParams(window.location.search).get("highlight");
+        if (highlightId) {
+          setExpandedWellId(highlightId);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load wells.");
     } finally {
@@ -167,6 +252,46 @@ export default function WellManagementPage() {
             </button>
           </div>
         </div>
+
+        {recentCommittedWell && (
+          <div className="bg-gradient-to-r from-cyan-950/40 via-wellqc-panel to-cyan-950/40 border border-cyan-500/40 rounded-2xl p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                <Sparkles className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white font-mono flex items-center gap-2">
+                  <span>Recently Committed Well:</span>
+                  <span className="text-cyan-300">{recentCommittedWell.wellName}</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                    Score: {recentCommittedWell.qualityScore}/100
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Curve results and quality inventory are saved in database and accessible below.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => toggleExpandWell(recentCommittedWell.wellId)}
+                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition-all flex items-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>{expandedWellId === recentCommittedWell.wellId ? "Hide Curves" : "View Curve Results"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecentCommittedWell(null)}
+                className="p-1.5 rounded-lg hover:bg-wellqc-card text-slate-400 hover:text-white"
+                title="Dismiss banner"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 text-red-200 rounded-xl px-4 py-3 text-xs font-mono">
@@ -278,54 +403,124 @@ export default function WellManagementPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-wellqc-border text-slate-200">
-                  {filteredWells.map((well) => (
-                    <tr key={well.id} className="hover:bg-wellqc-card/60 transition-colors">
-                      <td className="p-4 font-bold text-white">
-                        <Link href={`/wells/${well.id}`} className="hover:text-cyan-400 flex items-center space-x-2">
-                          <Database className="w-4 h-4 text-cyan-400" />
-                          <span>{well.name}</span>
-                        </Link>
-                      </td>
-                      <td className="p-4 text-slate-400">{well.apiNo}</td>
-                      <td className="p-4 text-cyan-300 font-semibold">{well.operatorName}</td>
-                      <td className="p-4">
-                        <div>{well.fieldName}</div>
-                        <div className="text-[10px] text-wellqc-muted">{well.basin}</div>
-                      </td>
-                      <td className="p-4 text-slate-400">{well.country}</td>
-                      <td className="p-4">
-                        <div>{well.latestLasFileName || "No LAS committed"}</div>
-                        <div className="text-[10px] text-wellqc-muted">
-                          {well.curveCount} curves | {well.pointCount.toLocaleString()} points
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded text-xs font-bold ${
-                          well.qualityScore >= 90 ? "badge-excellent" :
-                          well.qualityScore >= 75 ? "badge-good" :
-                          well.qualityScore >= 50 ? "badge-poor" : "badge-critical"
-                        }`}>
-                          {well.qualityScore}/100 ({well.qualityGrade})
-                        </span>
-                      </td>
-                      <td className="p-4 text-right space-x-2">
-                        <Link
-                          href={`/wells/${well.id}`}
-                          className="p-1.5 rounded-lg bg-wellqc-card hover:bg-cyan-500/20 text-cyan-300 inline-block transition-colors"
-                          title="View Well Log Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Link>
-                        <button
-                          onClick={() => handleDeleteWell(well.id)}
-                          className="p-1.5 rounded-lg bg-wellqc-card hover:bg-red-500/20 text-red-400 inline-block transition-colors"
-                          title="Delete Well"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredWells.map((well) => {
+                    const isExpanded = expandedWellId === well.id;
+                    const wellCurves = curvesCache[well.id] || well.curveSummaries || [];
+
+                    return (
+                      <React.Fragment key={well.id}>
+                        <tr className={`hover:bg-wellqc-card/60 transition-colors ${isExpanded ? "bg-wellqc-card/40" : ""}`}>
+                          <td className="p-4 font-bold text-white">
+                            <Link href={`/wells/${well.id}`} className="hover:text-cyan-400 flex items-center space-x-2">
+                              <Database className="w-4 h-4 text-cyan-400 shrink-0" />
+                              <span>{well.name}</span>
+                            </Link>
+                          </td>
+                          <td className="p-4 text-slate-400">{well.apiNo}</td>
+                          <td className="p-4 text-cyan-300 font-semibold">{well.operatorName}</td>
+                          <td className="p-4">
+                            <div>{well.fieldName}</div>
+                            <div className="text-[10px] text-wellqc-muted">{well.basin}</div>
+                          </td>
+                          <td className="p-4 text-slate-400">{well.country}</td>
+                          <td className="p-4">
+                            <div>{well.latestLasFileName || "No LAS committed"}</div>
+                            <div className="text-[10px] text-wellqc-muted">
+                              {well.curveCount} curves | {well.pointCount.toLocaleString()} points
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-1 rounded text-xs font-bold ${
+                              well.qualityScore >= 90 ? "badge-excellent" :
+                              well.qualityScore >= 75 ? "badge-good" :
+                              well.qualityScore >= 50 ? "badge-poor" : "badge-critical"
+                            }`}>
+                              {well.qualityScore}/100 ({well.qualityGrade})
+                            </span>
+                          </td>
+                          <td className="p-4 text-right space-x-2 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpandWell(well.id, well.curveSummaries)}
+                              className={`p-1.5 rounded-lg border inline-flex items-center gap-1 text-xs font-mono transition-all ${
+                                isExpanded
+                                  ? "bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-sm shadow-cyan-500/20"
+                                  : "bg-wellqc-card border-wellqc-border hover:border-cyan-500/50 text-cyan-300"
+                              }`}
+                              title="View Curve Standardisation & Quality Inventory"
+                            >
+                              <Layers className="w-3.5 h-3.5" />
+                              <span className="text-[11px] font-bold">Curves</span>
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <Link
+                              href={`/wells/${well.id}`}
+                              className="p-1.5 rounded-lg bg-wellqc-card hover:bg-cyan-500/20 text-cyan-300 inline-block transition-colors"
+                              title="View Well Log Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Link>
+                            <button
+                              onClick={() => handleDeleteWell(well.id)}
+                              className="p-1.5 rounded-lg bg-wellqc-card hover:bg-red-500/20 text-red-400 inline-block transition-colors"
+                              title="Delete Well"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="bg-slate-950/80">
+                            <td colSpan={8} className="p-4 border-b border-wellqc-border">
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between px-1">
+                                  <div className="text-xs font-bold text-slate-200 font-mono flex items-center gap-2">
+                                    <Layers className="w-4 h-4 text-cyan-400" />
+                                    <span>
+                                      Curve Results for <span className="text-cyan-300">{well.name}</span> ({well.apiNo})
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs font-mono">
+                                    <Link
+                                      href={`/wells/${well.id}`}
+                                      className="text-cyan-400 hover:text-cyan-300 hover:underline flex items-center gap-1 font-bold"
+                                    >
+                                      <span>Interactive Wireline Viewer</span>
+                                      <ChevronRight className="w-3.5 h-3.5" />
+                                    </Link>
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedWellId(null)}
+                                      className="text-slate-400 hover:text-white"
+                                    >
+                                      Close
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {loadingCurvesFor === well.id ? (
+                                  <div className="p-6 bg-wellqc-panel border border-wellqc-border rounded-xl text-center text-cyan-300 text-xs font-mono flex items-center justify-center gap-2">
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    Loading curve results...
+                                  </div>
+                                ) : (
+                                  <CurveInventoryTable
+                                    curveSummaries={wellCurves}
+                                    title={`Curve Standardisation & Quality Inventory – ${well.name}`}
+                                  />
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -28,15 +28,21 @@ The WellQC+ platform is structured as a full-stack, enterprise-grade AI well log
 
 ### 3. Application UI & Dashboard Modules (`src/app/`)
 * **Navigation & Shell**: `app-shell.tsx`, responsive `sidebar.tsx` with mobile drawer, and `header.tsx` with RBAC role switcher (`ADMIN`, `PETROPHYSICIST`, `DATA_ENGINEER`, `GEOSCIENTIST`, `VIEWER`).
-* **Upload Workspace (`upload/page.tsx`)**: Drag-and-drop LAS ingestion, pre-validation checks, multi-track wireline rendering, and database commit.
+* **Upload Workspace ([`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx))**: Drag-and-drop LAS ingestion, pre-validation checks, multi-track wireline rendering, database commit, **`localStorage` upload session persistence** (key `wellqc_upload_session`) to survive accidental page refreshes, and **inline Curve Standardisation & Quality Inventory display** post-commit.
 * **Quality Control Command Center (`dashboard/page.tsx`)**: 8 live telemetry KPI cards, 7-day rolling quality trend chart, field performance breakdown, and problem wells list.
-* **Asset & Well Management (`wells/page.tsx`, `wells/[id]/page.tsx`)**: Well inventories, geographic coordinates, curve channels, and audit history.
-* **Specialized Pages**: QA Engine (`qa-engine/page.tsx`), Standardisation Dictionary (`standardisation/page.tsx`), Analytics (`analytics/page.tsx`), Well Comparison (`comparison/page.tsx`), Audit Reports (`reports/page.tsx`), Activity Log (`activity/page.tsx`), and Admin Panel (`admin/page.tsx`).
+* **Asset & Well Management ([`wells/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/page.tsx), [`wells/[id]/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/%5Bid%5D/page.tsx))**: Well inventories, geographic coordinates, curve channels, audit history, and **`CurveInventoryTable` component** rendering per-curve standardisation results and health scores directly within the well detail view after a LAS file is committed.
+* **Specialized Pages**: QA Engine (`qa-engine/page.tsx`), Standardisation Dictionary (`standardisation/page.tsx`), Analytics (`analytics/page.tsx`), Well Comparison (`comparison/page.tsx`), Audit Reports ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx)), Activity Log (`activity/page.tsx`), and Admin Panel (`admin/page.tsx`).
 
-### 4. Database & Infrastructure (`prisma/`)
+### 4. Reusable Well-Log Components (`src/components/well-log/`)
+* **Multi-Track Log Viewer ([`log-viewer.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx))**: SVG-rendered wireline tracks with Classic Paper and Dark Subsurface themes.
+* **Curve Inventory Table ([`curve-inventory-table.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/curve-inventory-table.tsx))** *(NEW — Sprint 5)*: Reusable component displaying Raw Mnemonic → Standard Name mapping, Unit, Null %, Data Range, Health Score (colour-coded), and expandable anomaly flag details per curve. Used in both the Upload Workspace and Well Detail pages.
+* **Imputation Benchmark Modal (`imputation-benchmark-modal.tsx`)**: Multi-method algorithm comparison UI.
+
+### 5. Database & Infrastructure (`prisma/`)
 * **Database**: Neon PostgreSQL on AWS us-east-1 with connection pooling.
 * **Schema (`schema.prisma`)**: Models for `User`, `Well`, `LASFile`, `Curve`, `QualityReport`, `Anomaly`, `ActivityLog`, `APIToken`, `Field`, `Operator`.
 * **Multi-Tenant Isolation**: Enforced via `ownerId` foreign key and query filters across all API routes.
+* **API Type Contracts ([`api-types.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/api-types.ts))**: `WellListItem` and `WellDetailResponse` now include the optional `curveSummaries: CurveHealthSummary[]` field, populated by `extractCurveSummaries()` in the `/api/wells/[id]` route.
 
 ---
 
@@ -125,22 +131,44 @@ Architecture    & Auth Setup  LAS Ingestion   Visualisation Monetization     Rel
 ---
 
 ### 🔴 SPRINT 5 (Weeks 9–10): Security, Paystack Monetization & Freemium Enforcement (Current Active Sprint)
-* **Theme:** Paystack payment integration for Nigeria & global markets, freemium limit enforcement, User Profile & Billing management, activity audit trail, and multi-tenant security audit.
+* **Theme:** Paystack payment integration for Nigeria & global markets, freemium limit enforcement, User Profile & Billing management, activity audit trail, multi-tenant security audit, **upload session persistence**, **curve inventory display in Well Management**, and **enhanced export reports**.
+
+#### ✅ Completed Sprint 5 Deliverables
+
+**SE1 & SE2 — Curve Inventory Display in Well Management** *(Completed 04 Sep 2026)*
+* Built reusable [`CurveInventoryTable`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/curve-inventory-table.tsx) component (`src/components/well-log/curve-inventory-table.tsx`) displaying a full per-curve quality matrix: Raw Mnemonic, Standard Name (confidence-matched), Unit, Null %, Data Range (Min–Max), Health Score (colour-coded ≥90 emerald / ≥75 cyan / ≥50 amber / <50 rose), and expandable anomaly flag details.
+* Integrated `CurveInventoryTable` into [`wells/[id]/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/%5Bid%5D/page.tsx) — the curve inventory is rendered below the wireline log viewer whenever `curveSummaries` are present, and also shown standalone when no log viewer data is available (e.g., curves stored in DB without raw depth arrays).
+* Extended [`api-types.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/api-types.ts) — added `curveSummaries?: CurveHealthSummary[]` to `WellListItem` and `curveSummaries: CurveHealthSummary[]` to `WellDetailResponse`.
+* Extended [`/api/wells/[id]/route.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/api/wells/%5Bid%5D/route.ts) — implemented `extractCurveSummaries()` helper that first reads from `reportJson` (parsed QA JSON blob), then falls back to constructing summaries from `Curve` DB records + `Anomaly` join; returns health-scored `CurveHealthSummary[]` array.
+
+**SE2 — Upload Session localStorage Persistence** *(Completed 04 Sep 2026)*
+* Added `localStorage` upload session persistence to [`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx) under key `wellqc_upload_session`.
+* Session state saved on: file parse, QA analysis completion, and successful database commit.
+* Session state restored on: page mount (with user-visible restore banner and dismiss/clear option).
+* Persisted fields: filename, quality analysis results, curve summaries, committed well ID; raw LAS text excluded to stay within `localStorage` quota limits.
+* `QuotaExceededError` handled gracefully — persistence silently skips on storage-full browsers.
+
+**DA4 — Enhanced PDF & Excel Export Reports** *(Completed 04 Sep 2026)*
+* **PDF Report** ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx)) — Extended from single-page to multi-page structure:
+  - Page 1: Well cover block (expanded to include Country, Lat/Long, Elevation, TD, Depth Unit), AI Petrophysical Summary, and numbered Recommendations list.
+  - Page 2: **Curve Standardisation & Quality Inventory** table — 11 columns (Raw Mnemonic, Standard Name, Unit, Total Points, Null Count, Null%, Min, Max, Mean, Health Score, Anomalies) with `didParseCell` colour-coding for health scores and anomaly flags.
+  - Page 2/3: **Quality Anomaly Detail** table — per-anomaly rows (Curve, Type, Severity, Depth Start, Depth End, Description, Suggested Correction) with CRITICAL/WARNING/INFO colour-coding.
+* **Excel Workbook** — Extended from 2 to 4 sheets:
+  - `QA Summary`: Full well metadata (12 fields) + AI summary + numbered recommendations.
+  - `Cleaned Curves`: Depth + all standardised curve numeric columns (unchanged).
+  - `Curve Inventory` *(new)*: All `CurveHealthSummary` fields as numeric-typed cells for pivot-table analysis.
+  - `Anomaly Log` *(new, conditional)*: Full anomaly record per row, only appended when anomalies exist.
+
+#### 🔄 Remaining Sprint 5 Items
+
 * **SE1:** Review quality scoring and imputation pipeline for production edge cases; enforce NDA acceptance checks.
-* **SE2:**
-  - Implement Paystack Payment Integration (`paystack.ts`) with Naira (₦ NGN) and Dollar ($ USD) currency support, card/transfer/USSD channels, and sandbox fallback.
-  - Build `PaymentModal` using React `createPortal` with `z-[99999]` and public Pricing Portal (`/pricing`).
-  - Build Paystack API routes: `/api/paystack/initialize`, `/api/paystack/verify`, `/api/paystack/webhook`, and `/api/checkout`.
-  - Build User Profile & Billing Management page (`/profile` & `/api/user/profile`) for managing account credentials, viewing Paystack transaction references, and managing subscriptions.
-  - Build Activity Audit Trail (`activity/page.tsx`), Well Comparison (`comparison/page.tsx`), and Admin Panel (`admin/page.tsx`).
+* **SE2:** Implement Paystack Payment Integration (`paystack.ts`) with Naira (₦ NGN) and Dollar ($ USD) currency support, card/transfer/USSD channels, and sandbox fallback; build `PaymentModal`; build Paystack API routes; build User Profile & Billing Management page (`/profile`); build Activity Audit Trail, Well Comparison, and Admin Panel pages.
 * **DA1:** Audit anomaly messages and petrophysical physical boundaries for accuracy against Niger Delta reservoir data.
 * **DA2:** Validate KNN cross-validation metrics across test wells; confirm KNN achieves highest R² ($>0.92$) for `GR`/`RHOB` logs.
 * **DA3:** Validate Dashboard 7-day rolling trend telemetry and field ranking accuracy against committed database wells.
 * **DA4:** Conduct full quality audit on generated PDF certificates, verifying anomaly counts and AI text formatting.
 * **CE1:** Execute load testing for concurrent LAS uploads; verify Vercel serverless function timeouts and SSL/TLS HTTPS configuration.
-* **CE2:**
-  - Implement Freemium Limit Enforcement (`/api/las/check`): Enforce 2 free LAS checks on FREE tier, rejecting further uploads with `402 Payment Required` until upgraded via Paystack.
-  - Perform strict Multi-Tenant Data Isolation Audit across all API routes (`/api/wells`, `/api/wells/[id]`, `/api/dashboard`, `/api/analytics`, `/api/las`), ensuring cross-tenant queries return `404 Not Found`.
+* **CE2:** Implement Freemium Limit Enforcement (`/api/las/check`): Enforce 2 free LAS checks on FREE tier; perform strict Multi-Tenant Data Isolation Audit across all API routes.
 
 ---
 
@@ -151,7 +179,7 @@ Architecture    & Auth Setup  LAS Ingestion   Visualisation Monetization     Rel
 * **DA1:** Sign off on standardisation dictionary, curve alias mappings, and physical boundaries.
 * **DA2:** Prepare petrophysical root-cause diagnostics and KNN imputation benchmarking slides for stakeholder demo.
 * **DA3:** Finalize problem wells and field performance presentation metrics.
-* **DA4:** Seed 6 pre-validated Niger Delta demo LAS files (1 EXCELLENT, 2 GOOD, 2 POOR, 1 CRITICAL) for demonstration.
+* **DA4:** Seed 6 pre-validated Niger Delta demo LAS files (1 EXCELLENT, 2 GOOD, 2 POOR, 1 CRITICAL) for demonstration; validate multi-page PDF export and Excel workbook (4 sheets) against all demo files.
 * **CE1:** Trigger production Vercel deployment; configure custom domain (`https://*.wellqc.com`), SSL certificates, and environment variables.
 * **CE2:** Execute production Neon PostgreSQL database migration and seed script; deploy Python FastAPI microservice to cloud container hosting.
 
@@ -165,12 +193,13 @@ WellQC+ Development Team (8 Members)
 ├── 🧑‍💻 SE1 (Core Engine & AI Lead)
 │    ├─ S1: Architecture & Data Pipeline Contract  ├─ S2: Scrypt & HMAC Auth Engine
 │    ├─ S3: LAS Parser & Quality Engine Scoring   ├─ S4: Multi-Track Viewer & Exporter
-│    └─ S5: NDA Enforcement & Engine Refinements  └─ S6: Code Review & Build Sign-Off
+│    └─ S5: Curve Inventory API + NDA Enforcement  └─ S6: Code Review & Build Sign-Off
 │
 ├── 🧑‍💻 SE2 (Full-Stack UI & API Lead)
 │    ├─ S1: Next.js Setup & Directory Scaffold    ├─ S2: Landing Page, Auth Pages & Shell
 │    ├─ S3: Upload UI & Well CRUD Pages           ├─ S4: Dashboard, QA Engine & Benchmark UI
-│    └─ S5: Paystack Gateway, Pricing & Audit UI  └─ S6: UI Polish & Responsive Audit
+│    └─ S5: Paystack + Upload localStorage +      └─ S6: UI Polish & Responsive Audit
+│           CurveInventoryTable in Well Mgmt
 │
 ├── 📊 DA1 (Petrophysical Rules & Standardisation Lead)
 │    ├─ S1: 8 Core Curve Physical Limit Bounds    ├─ S2: Raw Mnemonic Alias Dictionary
@@ -190,7 +219,8 @@ WellQC+ Development Team (8 Members)
 ├── 📊 DA4 (Reporting & Quality Audit Lead)
 │    ├─ S1: PDF Audit Certificate Layout Specs    ├─ S2: 10 Niger Delta Test LAS Dataset
 │    ├─ S3: Quality Grade Range Verification      ├─ S4: PDF / Excel / CSV Exporters
-│    └─ S5: Certificate Compliance Quality Audit  └─ S6: Demo Dataset Seeding & Sign-Off
+│    └─ S5: Enhanced PDF (Curve Inventory +       └─ S6: Demo Dataset Seeding & Sign-Off
+│           Anomaly Detail) & Excel (4 Sheets)
 │
 ├── ☁️ CE1 (DevOps, CI/CD & Performance Lead)
 │    ├─ S1: Vercel Project & Environment Setup    ├─ S2: SSL HTTPS & GitHub Actions CI/CD
@@ -205,5 +235,26 @@ WellQC+ Development Team (8 Members)
 
 ---
 
-> **WellQC+ v2.4.0-Enterprise** | Master Development Sprint Plan & Ownership Matrix  
-> Updated & Grounded 100% in Codebase · 8 Team Members (2 SE, 4 DA, 2 CE) · 6 Sprints.
+## 📋 5. Sprint 5 Delivery Log
+
+| # | Feature | Owner | Status | Date Completed | Files Changed |
+|---|---|---|---|---|---|
+| 5.1 | `CurveInventoryTable` reusable component | SE1 | ✅ Done | 04 Sep 2026 | `curve-inventory-table.tsx` [NEW] |
+| 5.2 | `curveSummaries` API field in `WellListItem` & `WellDetailResponse` | SE1 | ✅ Done | 04 Sep 2026 | `api-types.ts` |
+| 5.3 | `extractCurveSummaries()` in `/api/wells/[id]` route | SE1 | ✅ Done | 04 Sep 2026 | `api/wells/[id]/route.ts` |
+| 5.4 | `CurveInventoryTable` integration in Well Detail page | SE2 | ✅ Done | 04 Sep 2026 | `wells/[id]/page.tsx` |
+| 5.5 | `localStorage` upload session persistence (`wellqc_upload_session`) | SE2 | ✅ Done | 04 Sep 2026 | `upload/page.tsx` |
+| 5.6 | PDF report — Curve Standardisation & Quality Inventory table (Page 2) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.7 | PDF report — Quality Anomaly Detail table with severity colour-coding | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.8 | PDF report — Expanded well metadata (Country, Lat/Long, Elevation, TD) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.9 | Excel workbook — `Curve Inventory` sheet (new, 3rd sheet) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.10 | Excel workbook — `Anomaly Log` sheet (new, conditional 4th sheet) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.11 | Excel workbook — Expanded `QA Summary` with AI summary & recommendations | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
+| 5.12 | Paystack Payment Gateway & Pricing Portal | SE2 | 🔄 In Progress | — | `paystack.ts`, `payment-modal.tsx`, `/pricing` |
+| 5.13 | Freemium LAS check enforcement (`/api/las/check`) | CE2 | 🔄 In Progress | — | `api/las/check/route.ts` |
+| 5.14 | Multi-Tenant Security Audit | CE2 | 🔄 In Progress | — | All `/api/*` routes |
+
+---
+
+> **WellQC+ v2.5.0-Enterprise** | Master Development Sprint Plan & Ownership Matrix  
+> Updated 04 Sep 2026 · Grounded 100% in Codebase · 8 Team Members (2 SE, 4 DA, 2 CE) · 6 Sprints.

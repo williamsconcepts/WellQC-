@@ -90,6 +90,8 @@ export default function ReportsPage() {
     await runExport(async () => {
       const detail = await loadDetail();
       const doc = new jsPDF();
+
+      // ── Cover block ─────────────────────────────────────────────────────────
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
       doc.text("WellQC+ | Well Log Quality Assurance Report", 14, 20);
@@ -103,6 +105,7 @@ export default function ReportsPage() {
 
       doc.line(14, 52, 196, 52);
 
+      // ── Committed LAS summary ────────────────────────────────────────────────
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
       doc.text("Committed LAS Summary", 14, 62);
@@ -114,19 +117,146 @@ export default function ReportsPage() {
           ["Operator", detail.well.operatorName],
           ["Field", detail.well.fieldName],
           ["Basin", detail.well.basin],
-          ["Latest LAS", detail.well.latestLasFileName || "None"],
+          ["Country", detail.well.country],
+          ["Latitude / Longitude", `${detail.well.latitude.toFixed(4)}, ${detail.well.longitude.toFixed(4)}`],
+          ["Elevation (KB)", `${detail.well.elevFt.toLocaleString()} FT`],
+          ["Total Depth (TD)", `${detail.well.tdFt.toLocaleString()} FT`],
+          ["Depth Unit", detail.well.depthUnit],
+          ["Latest LAS File", detail.well.latestLasFileName || "None"],
           ["Curve Count", String(detail.well.curveCount)],
           ["Point Count", detail.well.pointCount.toLocaleString()],
           ["Anomaly Count", String(detail.well.anomalyCount)],
         ],
         headStyles: { fillColor: [19, 27, 46] },
+        styles: { fontSize: 9 },
       });
 
-      const finalY = (doc as any).lastAutoTable?.finalY || 120;
+      // ── AI Summary ───────────────────────────────────────────────────────────
+      let curY = (doc as any).lastAutoTable?.finalY || 120;
+      doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
-      doc.text("AI Summary", 14, finalY + 12);
+      doc.text("AI Petrophysical Summary", 14, curY + 12);
+      doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      doc.text(doc.splitTextToSize(detail.aiSummary, 180), 14, finalY + 20);
+      doc.text(doc.splitTextToSize(detail.aiSummary, 180), 14, curY + 20);
+
+      // ── Recommendations ──────────────────────────────────────────────────────
+      if (detail.recommendations.length > 0) {
+        curY = (doc as any).lastAutoTable?.finalY || curY + 40;
+        const aiTextLines = doc.splitTextToSize(detail.aiSummary, 180);
+        const aiTextHeight = aiTextLines.length * 4;
+        const recStart = curY + 20 + aiTextHeight + 8;
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("Recommendations", 14, recStart);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        detail.recommendations.forEach((rec, i) => {
+          doc.text(`${i + 1}. ${rec}`, 18, recStart + 8 + i * 6);
+        });
+      }
+
+      // ── Curve Standardisation & Quality Inventory ────────────────────────────
+      if (detail.curveSummaries && detail.curveSummaries.length > 0) {
+        doc.addPage();
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("Curve Standardisation & Quality Inventory", 14, 20);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          `${detail.curveSummaries.length} channel${detail.curveSummaries.length === 1 ? "" : "s"} detected in committed LAS file.`,
+          14,
+          28,
+        );
+
+        (doc as any).autoTable({
+          startY: 34,
+          head: [
+            ["Raw Mnemonic", "Standard Name", "Unit", "Total Points", "Null Count", "Null %", "Min", "Max", "Mean", "Health Score", "Anomalies"],
+          ],
+          body: detail.curveSummaries.map((c) => [
+            c.mnemonic,
+            c.standardMnemonic || "UNKNOWN",
+            c.unit || "—",
+            c.totalPoints.toLocaleString(),
+            c.nullCount.toLocaleString(),
+            `${c.nullPercentage.toFixed(1)}%`,
+            c.minVal !== null ? c.minVal.toFixed(2) : "—",
+            c.maxVal !== null ? c.maxVal.toFixed(2) : "—",
+            c.meanVal !== null ? c.meanVal.toFixed(2) : "—",
+            `${c.healthScore}/100`,
+            c.anomalies?.length ? `${c.anomalies.length} flag${c.anomalies.length === 1 ? "" : "s"}` : "Clean",
+          ]),
+          headStyles: { fillColor: [0, 100, 130], fontSize: 7, halign: "center" },
+          styles: { fontSize: 7.5, cellPadding: 2 },
+          columnStyles: {
+            0: { fontStyle: "bold" },
+            9: { halign: "center" },
+            10: { halign: "center" },
+          },
+          didParseCell: (data: any) => {
+            if (data.section === "body" && data.column.index === 10) {
+              const text = String(data.cell.raw || "");
+              if (text.includes("flag")) {
+                data.cell.styles.textColor = [245, 158, 11]; // amber
+              } else {
+                data.cell.styles.textColor = [52, 211, 153]; // emerald
+              }
+            }
+            if (data.section === "body" && data.column.index === 9) {
+              const score = parseInt(String(data.cell.raw || "0"), 10);
+              if (score >= 90) data.cell.styles.textColor = [52, 211, 153];
+              else if (score >= 75) data.cell.styles.textColor = [34, 211, 238];
+              else if (score >= 50) data.cell.styles.textColor = [245, 158, 11];
+              else data.cell.styles.textColor = [248, 113, 113];
+            }
+          },
+        });
+      }
+
+      // ── Anomaly Detail Table ─────────────────────────────────────────────────
+      if (detail.anomalies && detail.anomalies.length > 0) {
+        const anomalyStart = (doc as any).lastAutoTable?.finalY
+          ? (doc as any).lastAutoTable.finalY + 14
+          : undefined;
+
+        if (!anomalyStart || anomalyStart > 240) {
+          doc.addPage();
+        }
+
+        const aY = anomalyStart && anomalyStart <= 240 ? anomalyStart : 20;
+        doc.setFontSize(13);
+        doc.setFont("helvetica", "bold");
+        doc.text("Quality Anomaly Detail", 14, aY);
+
+        (doc as any).autoTable({
+          startY: aY + 8,
+          head: [["Curve", "Type", "Severity", "Depth Start", "Depth End", "Description", "Suggested Correction"]],
+          body: detail.anomalies.map((a) => [
+            a.curveMnemonic,
+            a.anomalyType.replace(/_/g, " "),
+            a.severity,
+            a.depthStart.toFixed(2),
+            a.depthEnd.toFixed(2),
+            a.description,
+            a.suggestedCorrection,
+          ]),
+          headStyles: { fillColor: [80, 20, 20], fontSize: 7 },
+          styles: { fontSize: 7, cellPadding: 2 },
+          columnStyles: {
+            2: { halign: "center", fontStyle: "bold" },
+          },
+          didParseCell: (data: any) => {
+            if (data.section === "body" && data.column.index === 2) {
+              const sev = String(data.cell.raw || "");
+              if (sev === "CRITICAL") data.cell.styles.textColor = [248, 113, 113];
+              else if (sev === "WARNING") data.cell.styles.textColor = [245, 158, 11];
+              else data.cell.styles.textColor = [148, 163, 184];
+            }
+          },
+        });
+      }
 
       doc.save(`${fileStem(detail.well.name)}_QA_Audit_Report.pdf`);
     });
@@ -138,12 +268,33 @@ export default function ReportsPage() {
       const curveNames = Object.keys(detail.curvesData.curves);
       const summaryRows = [
         ["Well Log Quality Audit Report - WellQC+"],
+        [],
         ["Well Asset", detail.well.name],
         ["API/UWI", detail.well.apiNo],
+        ["Operator", detail.well.operatorName],
+        ["Field", detail.well.fieldName],
+        ["Basin", detail.well.basin],
+        ["Country", detail.well.country],
+        ["Latitude", detail.well.latitude],
+        ["Longitude", detail.well.longitude],
+        ["Elevation (KB, FT)", detail.well.elevFt],
+        ["Total Depth (TD, FT)", detail.well.tdFt],
+        ["Depth Unit", detail.well.depthUnit],
+        [],
         ["Overall Score", `${detail.well.qualityScore} / 100`],
         ["Grade", detail.well.qualityGrade],
         ["Latest LAS", detail.well.latestLasFileName || ""],
+        ["Curve Count", detail.well.curveCount],
+        ["Point Count", detail.well.pointCount],
         ["Anomaly Count", detail.well.anomalyCount],
+        [],
+        ["AI Summary"],
+        [detail.aiSummary],
+        [],
+        ["Recommendations"],
+        ...detail.recommendations.map((rec, i) => [`${i + 1}. ${rec}`]),
+        [],
+        ["Generated", new Date().toLocaleString()],
       ];
 
       const dataRows = [
@@ -154,9 +305,50 @@ export default function ReportsPage() {
         ]),
       ];
 
+      // Curve Inventory sheet
+      const inventoryRows: (string | number)[][] = [
+        ["Curve Standardisation & Quality Inventory"],
+        [],
+        ["Raw Mnemonic", "Standard Mnemonic", "Unit", "Total Points", "Null Count", "Null %", "Min Value", "Max Value", "Mean Value", "Health Score", "Status", "Anomaly Count"],
+        ...(detail.curveSummaries ?? []).map((c) => [
+          c.mnemonic,
+          c.standardMnemonic || "UNKNOWN",
+          c.unit || "",
+          c.totalPoints,
+          c.nullCount,
+          parseFloat(c.nullPercentage.toFixed(2)),
+          c.minVal !== null ? parseFloat(c.minVal.toFixed(4)) : "",
+          c.maxVal !== null ? parseFloat(c.maxVal.toFixed(4)) : "",
+          c.meanVal !== null ? parseFloat(c.meanVal.toFixed(4)) : "",
+          c.healthScore,
+          c.status,
+          c.anomalies?.length ?? 0,
+        ]),
+      ];
+
+      // Anomaly Log sheet
+      const anomalyRows: (string | number)[][] = [
+        ["Quality Anomaly Log"],
+        [],
+        ["Curve Mnemonic", "Anomaly Type", "Severity", "Depth Start", "Depth End", "Description", "Suggested Correction"],
+        ...(detail.anomalies ?? []).map((a) => [
+          a.curveMnemonic,
+          a.anomalyType.replace(/_/g, " "),
+          a.severity,
+          parseFloat(a.depthStart.toFixed(4)),
+          parseFloat(a.depthEnd.toFixed(4)),
+          a.description,
+          a.suggestedCorrection,
+        ]),
+      ];
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "QA Summary");
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataRows), "Cleaned Curves");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(inventoryRows), "Curve Inventory");
+      if ((detail.anomalies ?? []).length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(anomalyRows), "Anomaly Log");
+      }
       XLSX.writeFile(wb, `${fileStem(detail.well.name)}_QA_Report.xlsx`);
     });
   };

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { WellDetailResponse, WellListItem } from "@/lib/api-types";
 import { getCurrentUser } from "@/lib/auth";
+import { CurveHealthSummary } from "@/lib/las/quality-engine";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -37,11 +38,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const latestLasFile = well.lasFiles[0];
     const latestReport = latestLasFile?.reports[0];
     const curvesData = buildCurvesData(latestLasFile?.curves || []);
+    const curveSummaries = extractCurveSummaries(latestReport, latestLasFile);
     const response: WellDetailResponse = {
-      well: toWellListItem(well),
+      well: toWellListItem(well, curveSummaries),
       aiSummary: latestReport?.aiSummary || "Upload and commit a LAS file to generate an AI petrophysical summary.",
       recommendations: parseRecommendations(latestReport?.recommendations),
       curvesData,
+      curveSummaries,
       anomalies:
         latestReport?.anomalies.map((anomaly) => ({
           curveMnemonic: anomaly.curveMnemonic,
@@ -187,36 +190,126 @@ function normalizeSeverity(value: string): "CRITICAL" | "WARNING" | "INFO" {
   return "INFO";
 }
 
-function toWellListItem(well: {
-  id: string;
-  apiNo: string;
-  name: string;
-  operatorName: string;
-  fieldName: string;
-  basin: string;
-  country: string;
-  latitude: number;
-  longitude: number;
-  elevFt: number;
-  tdFt: number;
-  depthUnit: string;
-  status: string;
-  qualityScore: number;
-  qualityGrade: string;
-  createdAt: Date;
-  updatedAt: Date;
-  lasFiles: Array<{
+function extractCurveSummaries(
+  latestReport:
+    | {
+        reportJson?: string;
+        anomalies?: Array<{
+          curveMnemonic: string;
+          depthStart: number;
+          depthEnd: number;
+          anomalyType: string;
+          severity: string;
+          description: string;
+          suggestedCorrection: string;
+        }>;
+      }
+    | undefined,
+  latestLasFile:
+    | {
+        curves?: Array<{
+          id: string;
+          originalMnemonic: string;
+          standardMnemonic: string;
+          unit: string;
+          nullCount: number;
+          totalPoints: number;
+          nullPercentage: number;
+          minVal: number | null;
+          maxVal: number | null;
+          meanVal: number | null;
+          status: string;
+        }>;
+      }
+    | undefined,
+): CurveHealthSummary[] {
+  if (latestReport?.reportJson) {
+    try {
+      const parsedQa = JSON.parse(latestReport.reportJson);
+      if (Array.isArray(parsedQa.curveSummaries) && parsedQa.curveSummaries.length > 0) {
+        return parsedQa.curveSummaries;
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+
+  if (!latestLasFile?.curves || latestLasFile.curves.length === 0) {
+    return [];
+  }
+
+  const anomalies = latestReport?.anomalies || [];
+
+  return latestLasFile.curves.map((curve) => {
+    const curveAnomalies = anomalies
+      .filter((a) => a.curveMnemonic === curve.originalMnemonic)
+      .map((a) => ({
+        curveMnemonic: a.curveMnemonic,
+        depthStart: a.depthStart,
+        depthEnd: a.depthEnd,
+        anomalyType: a.anomalyType as any,
+        severity: normalizeSeverity(a.severity),
+        description: a.description,
+        suggestedCorrection: a.suggestedCorrection,
+      }));
+
+    let healthScore = 100;
+    if (curve.nullPercentage > 50) healthScore -= 40;
+    else if (curve.nullPercentage > 20) healthScore -= 20;
+    else if (curve.nullPercentage > 5) healthScore -= 10;
+    healthScore -= curveAnomalies.length * 15;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+
+    return {
+      mnemonic: curve.originalMnemonic,
+      standardMnemonic: curve.standardMnemonic || "UNKNOWN",
+      unit: curve.unit || "",
+      nullCount: curve.nullCount || 0,
+      totalPoints: curve.totalPoints || 0,
+      nullPercentage: curve.nullPercentage || 0,
+      minVal: curve.minVal,
+      maxVal: curve.maxVal,
+      meanVal: curve.meanVal,
+      healthScore,
+      status: (curve.status === "VALID" ? "EXCELLENT" : curve.status === "STANDARDISED" ? "GOOD" : "POOR") as any,
+      anomalies: curveAnomalies,
+    };
+  });
+}
+
+function toWellListItem(
+  well: {
     id: string;
-    originalName: string;
-    curveCount: number;
-    pointCount: number;
-    reports: Array<{
+    apiNo: string;
+    name: string;
+    operatorName: string;
+    fieldName: string;
+    basin: string;
+    country: string;
+    latitude: number;
+    longitude: number;
+    elevFt: number;
+    tdFt: number;
+    depthUnit: string;
+    status: string;
+    qualityScore: number;
+    qualityGrade: string;
+    createdAt: Date;
+    updatedAt: Date;
+    lasFiles: Array<{
       id: string;
-      anomalyCount: number;
-      _count: { anomalies: number };
+      originalName: string;
+      curveCount: number;
+      pointCount: number;
+      reports: Array<{
+        id: string;
+        anomalyCount: number;
+        _count: { anomalies: number };
+      }>;
     }>;
-  }>;
-}): WellListItem {
+  },
+  curveSummaries?: CurveHealthSummary[],
+): WellListItem {
   const latestLasFile = well.lasFiles[0];
   const latestReport = latestLasFile?.reports[0];
 
@@ -242,6 +335,7 @@ function toWellListItem(well: {
     curveCount: latestLasFile?.curveCount ?? 0,
     pointCount: latestLasFile?.pointCount ?? 0,
     anomalyCount: latestReport?._count.anomalies ?? latestReport?.anomalyCount ?? 0,
+    curveSummaries,
     createdAt: well.createdAt.toISOString(),
     updatedAt: well.updatedAt.toISOString(),
   };

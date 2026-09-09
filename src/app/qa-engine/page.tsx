@@ -17,6 +17,8 @@ import {
   HelpCircle,
 } from "lucide-react";
 
+import { cleanLASLogData } from "@/lib/las/cleaner";
+
 // Mock reference LAS dataset for QA Engine interactive benchmarking
 const sampleBenchmarkLAS: ParsedLAS = {
   version: "2.0",
@@ -101,6 +103,19 @@ export default function QAEnginePage() {
     setLastImputationApplied(`Applied ${strategy} imputation on curve ${curve}. Log updated successfully.`);
   };
 
+  const handleAutoCleanBenchmark = () => {
+    const cleaned = cleanLASLogData(activeLas, undefined, {
+      despiking: true,
+      outlierClipping: true,
+      unitStandardization: true,
+      duplicateDepthPruning: true,
+      imputationStrategy: "KNN",
+    });
+    setActiveLas(cleaned.cleanedLas);
+    setEvaluated(true);
+    setLastImputationApplied(`Automated Data Cleaning & Repair completed. ${cleaned.verificationReport.summaryMessage}`);
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -120,7 +135,14 @@ export default function QAEnginePage() {
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleAutoCleanBenchmark}
+              className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 hover:scale-[1.02] transition-all cursor-pointer font-mono"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>✨ Auto-Clean Log Data</span>
+            </button>
             <button
               onClick={handleLaunchBenchmark}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 hover:scale-[1.02] transition-all"
@@ -128,7 +150,6 @@ export default function QAEnginePage() {
               <Sparkles className="w-4 h-4" />
               <span>Launch Imputation Benchmark</span>
             </button>
-
             <button
               onClick={handleRunQATest}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-wellqc-card border border-wellqc-border text-slate-200 hover:text-white font-bold text-xs"

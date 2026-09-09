@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { ActivityListItem } from "@/lib/api-types";
-import { Search, Bell, Shield, ChevronDown, Check, Globe, LogOut, Menu } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ActivityListItem, WellListItem } from "@/lib/api-types";
+import { Search, Bell, Shield, ChevronDown, Check, Globe, LogOut, Menu, X, Database, ArrowRight } from "lucide-react";
 import { PaymentModal } from "@/components/pricing/payment-modal";
 
 interface HeaderProps {
@@ -28,6 +29,71 @@ export function Header({
   onLogout,
   onToggleMobileNav,
 }: HeaderProps) {
+  const router = useRouter();
+  const searchRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<WellListItem[]>([]);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [allWells, setAllWells] = useState<WellListItem[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    async function fetchWells() {
+      try {
+        const res = await fetch("/api/wells", { cache: "no-store" });
+        if (res.ok && active) {
+          const data = await res.json();
+          setAllWells(data.wells || []);
+        }
+      } catch {}
+    }
+    fetchWells();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    const q = searchQuery.toLowerCase().trim();
+    const matches = allWells.filter(
+      (w) =>
+        w.name.toLowerCase().includes(q) ||
+        w.apiNo.toLowerCase().includes(q) ||
+        w.operatorName.toLowerCase().includes(q) ||
+        w.fieldName.toLowerCase().includes(q) ||
+        w.basin.toLowerCase().includes(q)
+    );
+    setSearchResults(matches);
+  }, [searchQuery, allWells]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/wells?search=${encodeURIComponent(searchQuery.trim())}`);
+      setIsSearchOpen(false);
+    }
+  };
+
+  const handleSelectWell = (wellId: string) => {
+    router.push(`/wells?highlight=${encodeURIComponent(wellId)}`);
+    setIsSearchOpen(false);
+    setSearchQuery("");
+  };
+
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityListItem[]>([]);
@@ -98,13 +164,97 @@ export function Header({
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="relative w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search wells, API/UWI numbers, operators..."
-            className="w-full bg-wellqc-card border border-wellqc-border rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-all font-mono"
-          />
+        <div ref={searchRef} className="relative w-full">
+          <form onSubmit={handleSearchSubmit}>
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchOpen(true);
+              }}
+              onFocus={() => setIsSearchOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setIsSearchOpen(false);
+                }
+              }}
+              placeholder="Search wells, API/UWI numbers, operators..."
+              className="w-full bg-wellqc-card border border-wellqc-border rounded-lg pl-9 pr-8 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-all font-mono"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSearchResults([]);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </form>
+
+          {/* Quick Search Overlay Dropdown */}
+          {isSearchOpen && searchQuery.trim() !== "" && (
+            <div className="absolute left-0 right-0 mt-2 bg-wellqc-card border border-wellqc-border rounded-xl shadow-2xl overflow-hidden z-50 max-h-80 overflow-y-auto">
+              <div className="px-3 py-2 text-[10px] font-mono text-slate-400 border-b border-wellqc-border flex justify-between items-center bg-wellqc-panel/50">
+                <span>Matching Assets ({searchResults.length})</span>
+                <span className="text-slate-500 text-[9px]">Press ENTER to view all</span>
+              </div>
+
+              {searchResults.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-400 font-mono">
+                  No wells found for &quot;{searchQuery}&quot;
+                </div>
+              ) : (
+                <div className="divide-y divide-wellqc-border/40">
+                  {searchResults.slice(0, 6).map((well) => (
+                    <button
+                      key={well.id}
+                      onClick={() => handleSelectWell(well.id)}
+                      className="w-full px-3 py-2.5 text-left hover:bg-cyan-500/10 transition-colors flex items-center justify-between group"
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        <div className="p-1.5 rounded-lg bg-wellqc-panel border border-wellqc-border text-cyan-400 group-hover:border-cyan-500/50">
+                          <Database className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="truncate">
+                          <div className="text-xs font-semibold text-slate-200 group-hover:text-cyan-300 truncate">
+                            {well.name}
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-400 truncate">
+                            API: {well.apiNo} • {well.fieldName} ({well.operatorName})
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                          well.qualityScore >= 80 ? "bg-emerald-500/20 text-emerald-300" :
+                          well.qualityScore >= 60 ? "bg-cyan-500/20 text-cyan-300" :
+                          "bg-rose-500/20 text-rose-300"
+                        }`}>
+                          Score: {well.qualityScore}%
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition-transform group-hover:translate-x-0.5" />
+                      </div>
+                    </button>
+                  ))}
+
+                  {searchResults.length > 6 && (
+                    <button
+                      onClick={handleSearchSubmit}
+                      className="w-full px-3 py-2 text-center text-xs font-mono text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+                    >
+                      View all {searchResults.length} matching wells →
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

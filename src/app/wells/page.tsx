@@ -139,11 +139,16 @@ export default function WellManagementPage() {
       });
       setCurvesCache((prev) => ({ ...newCache, ...prev }));
 
-      // If URL has ?highlight=wellId, auto-expand that well
+      // If URL has ?highlight=wellId or ?search=term, auto apply
       if (typeof window !== "undefined") {
-        const highlightId = new URLSearchParams(window.location.search).get("highlight");
+        const params = new URLSearchParams(window.location.search);
+        const highlightId = params.get("highlight");
         if (highlightId) {
           setExpandedWellId(highlightId);
+        }
+        const searchParam = params.get("search");
+        if (searchParam) {
+          setSearchQuery(searchParam);
         }
       }
     } catch (err) {

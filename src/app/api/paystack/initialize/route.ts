@@ -1,12 +1,28 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { initializePaystackTransaction, PAYSTACK_PLANS, PaymentCurrency } from "@/lib/paystack";
+import { initializePaystackTransaction, PAYSTACK_PLANS, PaymentCurrency, isPaystackDemoMode } from "@/lib/paystack";
+
+function getBaseUrl(request: Request): string {
+  const host = request.headers.get("host") || "localhost:3000";
+  const protocol = request.headers.get("x-forwarded-proto") || "http";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl && !appUrl.includes("localhost:3000")) {
+    return appUrl;
+  }
+  return `${protocol}://${host}`;
+}
 
 export async function POST(request: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) {
-      return NextResponse.json({ error: "Authentication required to initialize payment." }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: "Authentication required to initialize payment. Please sign in or use a demo account.",
+          isDemo: isPaystackDemoMode(),
+        },
+        { status: 401 }
+      );
     }
 
     const body = await request.json().catch(() => ({}));
@@ -16,7 +32,7 @@ export async function POST(request: Request) {
     const plan = PAYSTACK_PLANS[planId] || PAYSTACK_PLANS.pro_monthly;
     const amountInSubunits = currency === "USD" ? plan.centsUsd : plan.koboNgn;
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = getBaseUrl(request);
     const callbackUrl = `${baseUrl}/api/paystack/verify?plan=${plan.id}&currency=${currency}`;
 
     const paystackRes = await initializePaystackTransaction({
@@ -42,6 +58,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       status: true,
+      isDemo: paystackRes.isDemo || isPaystackDemoMode(),
       authorizationUrl: paystackRes.data.authorization_url,
       accessCode: paystackRes.data.access_code,
       reference: paystackRes.data.reference,
@@ -62,10 +79,10 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const baseUrl = getBaseUrl(request);
   try {
     const user = await getCurrentUser();
     if (!user) {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
       return NextResponse.redirect(`${baseUrl}/login?returnUrl=/pricing`);
     }
 
@@ -76,7 +93,6 @@ export async function GET(request: Request) {
     const plan = PAYSTACK_PLANS[planId] || PAYSTACK_PLANS.pro_monthly;
     const amountInSubunits = currency === "USD" ? plan.centsUsd : plan.koboNgn;
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const callbackUrl = `${baseUrl}/api/paystack/verify?plan=${plan.id}&currency=${currency}`;
 
     const paystackRes = await initializePaystackTransaction({
@@ -96,7 +112,6 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${baseUrl}/pricing?error=init_failed`);
   } catch (error) {
     console.error("Paystack GET Initialize error:", error);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/pricing?error=init_failed`);
   }
 }

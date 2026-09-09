@@ -84,6 +84,7 @@ export interface PaystackInitParams {
 export interface PaystackInitResponse {
   status: boolean;
   message: string;
+  isDemo?: boolean;
   data?: {
     authorization_url: string;
     access_code: string;
@@ -94,6 +95,7 @@ export interface PaystackInitResponse {
 export interface PaystackVerifyResponse {
   status: boolean;
   message: string;
+  isDemo?: boolean;
   data?: {
     id: number;
     domain: string;
@@ -120,12 +122,23 @@ export interface PaystackVerifyResponse {
   };
 }
 
-function isRealPaystackKey(key: string | undefined): boolean {
+export function isRealPaystackKey(key: string | undefined): boolean {
   if (!key) return false;
-  if (key.includes("sandbox") || key.includes("dummy") || key.includes("placeholder") || key.length < 25) {
+  if (
+    key.includes("sandbox") ||
+    key.includes("dummy") ||
+    key.includes("placeholder") ||
+    key === "sk_test_paystack_sandbox_key" ||
+    key.length < 25
+  ) {
     return false;
   }
   return key.startsWith("sk_test_") || key.startsWith("sk_live_");
+}
+
+export function isPaystackDemoMode(): boolean {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  return !isRealPaystackKey(secretKey);
 }
 
 /**
@@ -138,10 +151,13 @@ export async function initializePaystackTransaction(
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const callbackUrl = params.callbackUrl || `${baseUrl}/api/paystack/verify`;
   const currency = params.currency || "NGN";
-  const reference = `wellqc_${params.userId.slice(0, 8)}_${Date.now()}`;
+  const isDemo = isPaystackDemoMode();
+  const reference = isDemo
+    ? `wellqc_demo_${(params.userId || "user").slice(0, 8)}_${Date.now()}`
+    : `wellqc_${(params.userId || "user").slice(0, 8)}_${Date.now()}`;
 
   // If a genuine Paystack Secret Key is configured, make the live Paystack API call
-  if (isRealPaystackKey(secretKey)) {
+  if (!isDemo && isRealPaystackKey(secretKey)) {
     try {
       const response = await fetch("https://api.paystack.co/transaction/initialize", {
         method: "POST",
@@ -185,7 +201,10 @@ export async function initializePaystackTransaction(
 
       const data = await response.json();
       if (data.status && data.data?.authorization_url) {
-        return data;
+        return {
+          ...data,
+          isDemo: false,
+        };
       }
       console.warn("Paystack live init returned status false, using fallback:", data.message);
     } catch (error) {
@@ -199,7 +218,8 @@ export async function initializePaystackTransaction(
 
   return {
     status: true,
-    message: "Sandbox Authorization URL created",
+    isDemo: true,
+    message: "Sandbox Authorization URL created (Demo Mode)",
     data: {
       authorization_url: verifyUrl,
       access_code: sandboxAccessCode,
@@ -215,8 +235,9 @@ export async function verifyPaystackTransaction(
   reference: string
 ): Promise<PaystackVerifyResponse> {
   const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  const isDemo = isPaystackDemoMode() || reference.includes("demo") || !isRealPaystackKey(secretKey);
 
-  if (isRealPaystackKey(secretKey) && !reference.includes("demo")) {
+  if (!isDemo && isRealPaystackKey(secretKey)) {
     try {
       const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
         method: "GET",
@@ -227,11 +248,15 @@ export async function verifyPaystackTransaction(
       });
 
       const data = await response.json();
-      return data;
+      return {
+        ...data,
+        isDemo: false,
+      };
     } catch (error) {
       console.error("Paystack verification error:", error);
       return {
         status: false,
+        isDemo: false,
         message: "Failed to communicate with Paystack API.",
       };
     }
@@ -240,7 +265,8 @@ export async function verifyPaystackTransaction(
   // Sandbox / Demo simulation verification
   return {
     status: true,
-    message: "Verification successful (Sandbox)",
+    isDemo: true,
+    message: "Verification successful (Sandbox Demo Mode)",
     data: {
       id: 99999999,
       domain: "test",

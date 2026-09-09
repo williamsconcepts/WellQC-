@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { initializePaystackTransaction, PAYSTACK_PLANS, PaymentCurrency } from "@/lib/paystack";
 
+function getBaseUrl(request: Request): string {
+  const host = request.headers.get("host") || "localhost:3000";
+  const protocol = request.headers.get("x-forwarded-proto") || "http";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl && !appUrl.includes("localhost:3000")) {
+    return appUrl;
+  }
+  return `${protocol}://${host}`;
+}
+
 export async function GET(request: Request) {
+  const baseUrl = getBaseUrl(request);
   try {
     const user = await getCurrentUser();
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
     if (!user) {
       return NextResponse.redirect(`${baseUrl}/login?returnUrl=/pricing`);
@@ -38,7 +48,6 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${baseUrl}/pricing?error=init_failed`);
   } catch (error) {
     console.error("Checkout processing error:", error);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/pricing?error=checkout_failed`);
   }
 }

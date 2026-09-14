@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/app-shell";
-import { getMergedStandardCurves, addCustomAlias, StandardCurveDef } from "@/lib/las/standardiser";
+import { getMergedStandardCurves, addCustomAlias, updateActiveUploadWithNewAlias, StandardCurveDef } from "@/lib/las/standardiser";
+import { analyzeWellLogQuality } from "@/lib/las/quality-engine";
 import { Layers, Search, Check, Edit, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 
 export default function StandardisationPage() {
@@ -27,6 +28,7 @@ export default function StandardisationPage() {
     if (!selectedCurve || !newAlias) return;
 
     addCustomAlias(selectedCurve, newAlias);
+    updateActiveUploadWithNewAlias(analyzeWellLogQuality);
     setCurves(Object.values(getMergedStandardCurves()));
 
     setOverrideModalOpen(false);

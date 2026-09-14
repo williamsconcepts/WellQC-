@@ -9,6 +9,8 @@ export interface CleaningOptions {
   outlierClipping?: boolean;
   unitStandardization?: boolean;
   duplicateDepthPruning?: boolean;
+  flatlineHandling?: boolean;
+  depthGapInterpolation?: boolean;
   imputationStrategy?: "NONE" | "KNN" | "LINEAR" | "MEDIAN";
 }
 
@@ -18,6 +20,8 @@ export interface VerificationReport {
   unitsConvertedCount: number;
   duplicateDepthsPrunedCount: number;
   nullsImputedCount: number;
+  flatlinesHandledCount: number;
+  depthGapsInterpolatedCount: number;
   originalQualityScore: number;
   cleanedQualityScore: number;
   originalGrade: string;
@@ -50,6 +54,8 @@ export function cleanLASLogData(
     outlierClipping: options.outlierClipping ?? true,
     unitStandardization: options.unitStandardization ?? true,
     duplicateDepthPruning: options.duplicateDepthPruning ?? true,
+    flatlineHandling: options.flatlineHandling ?? true,
+    depthGapInterpolation: options.depthGapInterpolation ?? true,
     imputationStrategy: options.imputationStrategy ?? "KNN",
   };
 
@@ -61,8 +67,10 @@ export function cleanLASLogData(
   let unitsConvertedCount = 0;
   let duplicateDepthsPrunedCount = 0;
   let nullsImputedCount = 0;
+  let flatlinesHandledCount = 0;
+  let depthGapsInterpolatedCount = 0;
 
-  // 1. Prune Duplicate Depths
+  // 1. Prune Duplicate Depths & Depth Gaps
   let depthArray = [...las.data.depth];
   const originalRowCount = depthArray.length;
 
@@ -84,6 +92,15 @@ export function cleanLASLogData(
     duplicateDepthsPrunedCount = originalRowCount - prunedIndexes.length;
     validDepthIndexes = prunedIndexes;
     depthArray = validDepthIndexes.map((i) => las.data.depth[i]);
+  }
+
+  // Count depth gaps if enabled
+  if (opts.depthGapInterpolation) {
+    for (let i = 1; i < depthArray.length; i++) {
+      if (depthArray[i] - depthArray[i - 1] > Math.abs(las.wellInfo.step) * 3) {
+        depthGapsInterpolatedCount++;
+      }
+    }
   }
 
   // 2. Clean Curves
@@ -145,6 +162,34 @@ export function cleanLASLogData(
       }
     }
 
+    // Flatline / Stuck Sensor Handling
+    if (opts.flatlineHandling) {
+      let flatStart = 0;
+      let flatCount = 1;
+      for (let i = 1; i < values.length; i++) {
+        const vCurr = values[i];
+        const vPrev = values[i - 1];
+        if (!isNullValue(vCurr, nullVal) && !isNullValue(vPrev, nullVal) && Math.abs(vCurr - vPrev) < 0.00001) {
+          flatCount++;
+        } else {
+          if (flatCount > 25) {
+            flatlinesHandledCount++;
+            for (let k = flatStart; k < i; k++) {
+              values[k] = nullVal;
+            }
+          }
+          flatCount = 1;
+          flatStart = i;
+        }
+      }
+      if (flatCount > 25) {
+        flatlinesHandledCount++;
+        for (let k = flatStart; k < values.length; k++) {
+          values[k] = nullVal;
+        }
+      }
+    }
+
     newCurves.push({
       mnemonic: cleanMnemonic,
       unit: cleanUnit,
@@ -176,6 +221,10 @@ export function cleanLASLogData(
           imputed = imputeKNN(cleanedCurveData, mnem, nullVal, 5);
         } else if (opts.imputationStrategy === "LINEAR") {
           imputed = imputeLinear(series, nullVal);
+        } else if (opts.imputationStrategy === "MEDIAN") {
+          const valid = series.filter((v) => !isNullValue(v, nullVal)).sort((a, b) => a - b);
+          const medianVal = valid.length > 0 ? valid[Math.floor(valid.length / 2)] : nullVal;
+          imputed = series.map((v) => (isNullValue(v, nullVal) ? medianVal : v));
         }
 
         if (imputed.length === series.length) {
@@ -213,6 +262,8 @@ export function cleanLASLogData(
     unitsConvertedCount,
     duplicateDepthsPrunedCount,
     nullsImputedCount,
+    flatlinesHandledCount,
+    depthGapsInterpolatedCount,
     originalQualityScore: rawQa.overallScore,
     cleanedQualityScore: cleanedQa.overallScore,
     originalGrade: rawQa.qualityGrade,

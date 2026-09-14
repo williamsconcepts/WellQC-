@@ -14,25 +14,28 @@ The WellQC+ platform is structured as a full-stack, enterprise-grade AI well log
 
 ### 1. Core Petrophysical & AI Engines (`src/lib/las/`)
 * **LAS Parser Engine ([`parser.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/parser.ts))**: Native TypeScript parser for LAS 2.0/3.0 files (`~Version`, `~Well`, `~Curve`, and `~ASCII` sections), normalizes null indicators (`-999.25`, `-9999`, `NaN`), and handles depth intervals.
-* **Quality Scoring Engine ([`quality-engine.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/quality-engine.ts))**: Computes Curve Health, Completeness, Consistency, and the composite Quality Score ($0\text{--}100$) with physical limit violations, Z-score spike detection ($>4.0\sigma$), sensor flatlines ($>25$ steps), and depth gap analysis.
+* **Quality Scoring Engine ([`quality-engine.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/quality-engine.ts))**: Audits 7 Core Required Curves (`GR`, `RHOB`, `NPHI`, `DT`, `RT`, `CALI`, `SP`) and detects all 11 user-specified anomaly categories (`DUPLICATE_DEPTH`, `DEPTH_GAP`, `NULL_CLUSTER`, `IMPOSSIBLE_VALUE`, `OUTLIER_VALUE`, `EXTREME_SPIKE` with calibrated DT cycle-skip sensitivity, `FLATLINE`, `UNIT_MISMATCH`, `NON_STANDARD_MNEMONIC`, `DUPLICATE_CURVE`, and `MISSING_CORE_CURVE`). Computes Curve Health, Completeness, Consistency, and composite Quality Score ($0\text{--}100$).
+* **Automated Data Cleaning & Repair Engine ([`cleaner.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/cleaner.ts))**: Core data modification engine executing duplicate depth pruning, depth gap alignment, physical outlier clipping, DT sonic despiking (5-point median window), unit conversions, flatline stuck-sensor handling, and missing gap imputation (`KNN`, `Linear`, `Median`). Generates Before vs After verification reports and cleaned LAS 2.0 / CSV text files.
 * **AI Recommendation Engine ([`ai-analyzer.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/ai-analyzer.ts))**: Rule-based expert system generating natural-language petrophysical risk summaries, confidence scores, and remediation steps.
-* **Mnemonic Standardiser ([`standardiser.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/standardiser.ts))**: Maps raw vendor mnemonics (`GAMMA`, `DEN`, `CNL`, `ILD`, `AC`) to standard API mnemonics (`GR`, `RHOB`, `NPHI`, `RT`, `DT`) with confidence weighting and custom alias persistence.
+* **Mnemonic Standardiser ([`standardiser.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/standardiser.ts))**: Maps raw vendor mnemonics (`GAMMA`, `DEN`, `CNL`, `ILD`, `AC`) to standard API mnemonics (`GR`, `RHOB`, `NPHI`, `RT`, `DT`) with confidence weighting, custom alias persistence, and `updateActiveUploadWithNewAlias()` auto-propagation.
 * **Missing Value & Imputation Engine ([`imputation-engine.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/imputation-engine.ts))**: Diagnoses 4 root causes (casing shoe, washout, telemetry dropout, off-bottom) and benchmarks 5 imputation algorithms (KNN, Cubic Spline, Linear, Mean, Median) with ground-truth cross-validation calculating RMSE, MAE, R², variance preservation, and speed.
 * **Cleaned LAS & Report Exporter ([`exporter.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/exporter.ts))**: Generates standard LAS 2.0 text exports with duplicate depth removal, plus CSV, Excel, and PDF certificates.
 
 ### 2. Paystack Payment & Monetization System (`src/lib/paystack.ts`)
 * **Payment Gateway**: Integration with Paystack supporting Nigerian Naira (₦ NGN) and US Dollars ($ USD) via Cards (Verve, Mastercard, Visa), Direct Bank Transfers, and USSD.
-* **API Endpoints**: `/api/paystack/initialize`, `/api/paystack/verify`, `/api/paystack/webhook`, `/api/checkout`, and `/api/las/check`.
-* **Payment Modal (`payment-modal.tsx`)**: React Portal (`createPortal`) modal mounted on `document.body` at `z-[99999]` with currency toggles (₦ / $), monthly/annual billing, and live checkout triggers.
+* **API Endpoints**: `/api/paystack/initialize`, `/api/paystack/verify`, `/api/paystack/webhook`, `/api/checkout`, `/api/auth/demo`, and `/api/las/check`.
+* **In-Modal Demo Payment Runner (`payment-modal.tsx`)**: In-modal checkout with simulated sandbox progress steps, 1-click test login, instant session upgrade to Pro, and live reference verification without external redirects.
 * **Pricing Portal (`/pricing`)**: Full public pricing page comparing Starter Free (2 checks), Pro Petrophysicist (₦75,000/mo or $50/mo), and Enterprise Hub.
 
 ### 3. Application UI & Dashboard Modules (`src/app/`)
 * **Navigation & Shell**: `app-shell.tsx`, responsive `sidebar.tsx` with mobile drawer, and `header.tsx` with RBAC role switcher (`ADMIN`, `PETROPHYSICIST`, `DATA_ENGINEER`, `GEOSCIENTIST`, `VIEWER`), plus **Global Live Search Bar** featuring real-time matching overlay dropdown, keyboard navigation (`Enter` / `Escape`), and URL search parameter synchronization (`/wells?search=...`).
-* **Upload Workspace ([`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx))**: Drag-and-drop LAS ingestion, pre-validation checks, multi-track wireline rendering, database commit, **`localStorage` upload session persistence** (key `wellqc_upload_session`) to survive accidental page refreshes, and **inline Curve Standardisation & Quality Inventory display** post-commit.
+* **Upload Workspace ([`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx))**: Strict "Detect and Flag Only" stage — original raw LAS file remains untouched. Features the 11 Anomaly Audit Checks Grid, 4 Summary Metric Cards, Untouched Raw Multi-Track Viewer, and direct CTAs to `/reports` and `/qa-engine`.
+* **Quality Engine Page ([`qa-engine/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/qa-engine/page.tsx))**: The dedicated stage for all data modification and repair. Features Active Wells Selection Dropdown (Current Upload Session, Committed DB Wells, Reference Logs), granular anomaly correction switches (Duplicate Depths, Depth Gaps, Imputation, Unit Conversions, Physical Clipping, DT Despiking, Flatlines), Before vs After score verification, and direct downloads for Cleaned LAS 2.0 (`.las`) and Cleaned CSV (`.csv`).
+* **Audit Reports Page ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx))**: Clear demarcation into **1. Anomaly Document** (PDF QA/QC Audit Certificate and Excel Anomaly Findings Sheet) and **2. Cleaned Document** (Cleaned LAS 2.0, Cleaned CSV, Cleaned Curves Excel), supporting both active upload sessions and committed database wells.
 * **Quality Control Command Center (`dashboard/page.tsx`)**: 8 live telemetry KPI cards, 7-day rolling quality trend chart, field performance breakdown, and problem wells list.
 * **Asset & Well Management ([`wells/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/page.tsx), [`wells/[id]/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/%5Bid%5D/page.tsx))**: Well inventories, geographic coordinates, curve channels, audit history, **`CurveInventoryTable` component**, and **URL-based search query filtering**.
-* **Jest & RTL Automated Test Suite**: `jest.config.ts` (Next.js App Router support), `jest.setup.ts` (`@testing-library/jest-dom`), unit tests for LAS parser (`parser.test.ts`), quality engine scoring (`quality-engine.test.ts`), and Header UI component (`header.test.tsx`).
-* **Specialized Pages**: QA Engine (`qa-engine/page.tsx`), Standardisation Dictionary (`standardisation/page.tsx`), Analytics (`analytics/page.tsx`), Well Comparison (`comparison/page.tsx`), Audit Reports ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx)), Activity Log (`activity/page.tsx`), and Admin Panel (`admin/page.tsx`).
+* **Jest & RTL Automated Test Suite**: 4 passing test suites (`parser.test.ts`, `quality-engine.test.ts`, `cleaner.test.ts`, `header.test.tsx`), 8/8 tests green, and zero TypeScript compilation errors.
+* **Specialized Pages**: Standardisation Dictionary (`standardisation/page.tsx`), Analytics (`analytics/page.tsx`), Well Comparison (`comparison/page.tsx`), Activity Log (`activity/page.tsx`), and Admin Panel (`admin/page.tsx`).
 
 ### 4. Reusable Well-Log Components (`src/components/well-log/`)
 * **Multi-Track Log Viewer ([`log-viewer.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx))**: SVG-rendered wireline tracks with Classic Paper and Dark Subsurface themes.
@@ -163,31 +166,55 @@ Architecture    & Auth Setup  LAS Ingestion   Visualisation Monetization     Rel
 **SE2 — Global Header Search & Wells URL Query Synchronization** *(Completed 08 Sep 2026)*
 * Built live overlay search popup in [`header.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/ui/header.tsx) that queries and filters well assets across Name, API/UWI Number, Field, Operator, and Basin.
 * Implemented quick-click direct navigation (`/wells?highlight=<wellId>`) to expand matched assets and `Enter` key search redirection (`/wells?search=<query>`).
-* Updated [`wells/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/page.tsx) to sync `search` URL parameters on mount and filter well lists dynamically.
-* Added dismiss controls: clear (`X`) button, click-outside listener, and `Escape` key handler.
-
-**SE1 & CE1 — Jest & React Testing Library Automated Test Suite** *(Completed 08 Sep 2026)*
+* Updated [`wells/page.tsx`](file:///c:/**SE1 & CE1 — Jest & React Testing Library Automated Test Suite** *(Completed 08 Sep 2026)*
 * Installed Jest, `@testing-library/react`, `@testing-library/jest-dom`, and `jest-environment-jsdom`.
 * Configured [`jest.config.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/jest.config.ts) for Next.js App Router SWC transformations and `@/*` alias mapping.
 * Configured [`jest.setup.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/jest.setup.ts) with DOM matchers and added `npm test` / `npm run test:watch` scripts to `package.json`.
-* Created 3 unit test suites (7 tests, 100% passing): `parser.test.ts` (LAS parsing & mnemonics), `quality-engine.test.ts` (scoring & anomaly detection), and `header.test.tsx` (React Header search UI).
+* Created 4 unit test suites (8 tests, 100% passing): `parser.test.ts` (LAS parsing & mnemonics), `quality-engine.test.ts` (scoring & 11 anomaly categories), `cleaner.test.ts` (data repair & verification), and `header.test.tsx` (React Header search UI).
+
+**SE2 & CE2 — Paystack Payment Gateway, In-Modal Sandbox Demo Runner & Freemium Enforcement** *(Completed 10 Sep 2026)*
+* Integrated Paystack payment system ([`paystack.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/paystack.ts)) supporting Naira (₦ NGN) and US Dollars ($ USD) with Cards, Direct Bank Transfers, and USSD.
+* Built In-Modal **Paystack Demo Payment Runner** ([`payment-modal.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/pricing/payment-modal.tsx)) with animated sandbox progress steps, verified sandbox checkout, and 1-click test login.
+* Built endpoints: `/api/paystack/initialize`, `/api/paystack/verify`, `/api/paystack/webhook`, `/api/checkout`, `/api/auth/demo`, and `/api/las/check`.
+* Implemented Freemium Enforcement: Enforces 2 free LAS checks on Starter tier, automatically prompting the upgrade modal to Pro Petrophysicist.
+
+**SE1, DA1 & DA2 — Enterprise Quality Engine Core: 11 Anomaly Categories & 7 Core Curves** *(Completed 14 Sep 2026)*
+* Upgraded [`quality-engine.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/quality-engine.ts) to audit all 7 Core Required Curves (`GR`, `RHOB`, `NPHI`, `DT`, `RT`, `CALI`, `SP`).
+* Added exhaustive detection for all 11 user-specified anomaly categories: `DUPLICATE_DEPTH`, `DEPTH_GAP`, `NULL_CLUSTER`, `IMPOSSIBLE_VALUE`, `OUTLIER_VALUE` ($>4.0\sigma$), `EXTREME_SPIKE` (with calibrated DT sonic cycle-skip sensitivity), `FLATLINE`, `UNIT_MISMATCH`, `NON_STANDARD_MNEMONIC`, `DUPLICATE_CURVE`, and `MISSING_CORE_CURVE`.
+
+**DA1 & SE1 — Standardization Studio: Real-Time Alias Auto-Propagation** *(Completed 14 Sep 2026)*
+* Implemented `updateActiveUploadWithNewAlias()` in [`standardiser.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/standardiser.ts) which re-analyzes `wellqc_upload_workspace` in `localStorage` and broadcasts `wellqc_alias_updated` window event.
+* Linked alias modal in [`standardisation/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/standardisation/page.tsx) so active uploads immediately update curve standardization without needing re-upload.
+
+**SE2 — Upload Page: Strict "Detect and Flag Only" Separation** *(Completed 14 Sep 2026)*
+* Redesigned [`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx) to strictly detect and flag anomalies only; original raw LAS remains untouched and unmodified.
+* Implemented the 11 Anomaly Audit Checks Grid with clear status badges and metric cards.
+* Added direct action links: "View Audit Report" (`/reports`) and "Send to Quality Engine for Correction" (`/qa-engine`).
+
+**SE1 & SE2 — Quality Engine Page: Dedicated Correction Stage with Active Wells & Granular Controls** *(Completed 14 Sep 2026)*
+* Transformed [`qa-engine/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/qa-engine/page.tsx) into the sole stage for data cleaning and repair.
+* Added **Active Wells Dropdown** supporting the Current Upload Session, Committed Database Wells, and Preset Reference Logs.
+* Added granular correction switches: Duplicate Depths, Depth Gaps, Missing Value Imputation (`KNN`, `Linear`, `Median`, `None`), Unit Conversions, Physical Clipping, DT Despiking, and Flatlines.
+* Displays Before vs After Score Verification (`58% POOR -> 94% EXCELLENT [+36%]`).
+* Added direct downloads for **Cleaned LAS 2.0 (`.las`)** and **Cleaned CSV (`.csv`)**, and commit back to database.
+
+**DA4 & SE2 — Audit Reports Page: Demarcation into Anomaly Document & Cleaned Document** *(Completed 14 Sep 2026)*
+* Restructured [`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx) into two explicit tabs:
+  1. **Anomaly Document**: PDF Executive QA/QC Audit Certificate and Excel Anomaly Findings Sheet (`.xlsx`).
+  2. **Cleaned Document**: Cleaned LAS 2.0 File (`.las`), Cleaned CSV (`.csv`), and Cleaned Curves Excel (`.xlsx`).
+* Extended target well selection to support both the active upload session and database records.
 
 #### 🔄 Remaining Sprint 5 Items
 
-* **SE1:** Review quality scoring and imputation pipeline for production edge cases; enforce NDA acceptance checks.
-* **SE2:** Implement Paystack Payment Integration (`paystack.ts`) with Naira (₦ NGN) and Dollar ($ USD) currency support, card/transfer/USSD channels, and sandbox fallback; build `PaymentModal`; build Paystack API routes; build User Profile & Billing Management page (`/profile`); build Activity Audit Trail, Well Comparison, and Admin Panel pages.
-* **DA1:** Audit anomaly messages and petrophysical physical boundaries for accuracy against Niger Delta reservoir data.
-* **DA2:** Validate KNN cross-validation metrics across test wells; confirm KNN achieves highest R² ($>0.92$) for `GR`/`RHOB` logs.
-* **DA3:** Validate Dashboard 7-day rolling trend telemetry and field ranking accuracy against committed database wells.
-* **DA4:** Conduct full quality audit on generated PDF certificates, verifying anomaly counts and AI text formatting.
-* **CE1:** Execute load testing for concurrent LAS uploads; verify Vercel serverless function timeouts and SSL/TLS HTTPS configuration.
-* **CE2:** Implement Freemium Limit Enforcement (`/api/las/check`): Enforce 2 free LAS checks on FREE tier; perform strict Multi-Tenant Data Isolation Audit across all API routes.
+* **CE1:** Execute final load testing for concurrent LAS uploads; verify Vercel serverless function timeouts.
+* **CE2:** Final verification of multi-tenant row-level access control across production database seeds before Sprint 6 deployment.
+* **SE1 & SE2:** Complete final UI polish across mobile/tablet viewports and verify Paystack live keys configuration.
 
 ---
 
 ### 🟣 SPRINT 6 (Weeks 11–12): Production Deployment, Demo & Launch
 * **Theme:** Production release, demo dataset seeding, documentation sign-off, and stakeholder presentation.
-* **SE1:** Conduct final code review of parser, quality engine, standardiser, and exporter; ensure zero TypeScript compiler warnings or errors (`npm run build`).
+* **SE1:** Conduct final code review of parser, quality engine, standardiser, cleaner, and exporter; ensure zero TypeScript compiler warnings or errors (`npm run build`).
 * **SE2:** Final UI polish (animations, loading skeletons, responsive checks on 375px mobile, 768px tablet, 1440px desktop); verify Paystack webhook live endpoints.
 * **DA1:** Sign off on standardisation dictionary, curve alias mappings, and physical boundaries.
 * **DA2:** Prepare petrophysical root-cause diagnostics and KNN imputation benchmarking slides for stakeholder demo.
@@ -206,44 +233,43 @@ WellQC+ Development Team (8 Members)
 ├── 🧑‍💻 SE1 (Core Engine & AI Lead)
 │    ├─ S1: Architecture & Data Pipeline Contract  ├─ S2: Scrypt & HMAC Auth Engine
 │    ├─ S3: LAS Parser & Quality Engine Scoring   ├─ S4: Multi-Track Viewer & Exporter
-│    └─ S5: Curve Inventory API + NDA Enforcement  └─ S6: Code Review & Build Sign-Off
+│    ├─ S5: Cleaner Engine & 11 Anomaly Audit     └─ S6: Code Review & Build Sign-Off
 │
 ├── 🧑‍💻 SE2 (Full-Stack UI & API Lead)
 │    ├─ S1: Next.js Setup & Directory Scaffold    ├─ S2: Landing Page, Auth Pages & Shell
 │    ├─ S3: Upload UI & Well CRUD Pages           ├─ S4: Dashboard, QA Engine & Benchmark UI
-│    └─ S5: Paystack + Upload localStorage +      └─ S6: UI Polish & Responsive Audit
-│           CurveInventoryTable in Well Mgmt
+│    ├─ S5: Paystack + Upload Separation +        └─ S6: UI Polish & Responsive Audit
+│           Quality Engine Active Wells & Controls
 │
 ├── 📊 DA1 (Petrophysical Rules & Standardisation Lead)
 │    ├─ S1: 8 Core Curve Physical Limit Bounds    ├─ S2: Raw Mnemonic Alias Dictionary
 │    ├─ S3: Standardiser Confidence Weighting     ├─ S4: Persistent Custom Alias Feature
-│    └─ S5: Anomaly Description & Rule Audit      └─ S6: Petrophysical Dictionary Sign-Off
+│    ├─ S5: Real-Time Alias Auto-Propagation      └─ S6: Petrophysical Dictionary Sign-Off
 │
 ├── 📊 DA2 (Missing Value & Imputation Lead)
 │    ├─ S1: Root Cause Diagnostics Definition     ├─ S2: Baseline Imputation Benchmarks
 │    ├─ S3: Spike & Flatline Threshold Tuning     ├─ S4: Multi-Method KNN Benchmark Engine
-│    └─ S5: RMSE / MAE / R² Cross-Validation      └─ S6: Imputation Presentation & Slides
+│    ├─ S5: 11 Anomaly Diagnostic Specifications  └─ S6: Imputation Presentation & Slides
 │
 ├── 📊 DA3 (Basin Intelligence & Field Analytics Lead)
 │    ├─ S1: Dashboard KPI & Telemetry Specs       ├─ S2: Niger Delta Basin Field Directory
 │    ├─ S3: Header Metadata Auto-Extraction       ├─ S4: Analytics & Field Ranking Logic
-│    └─ S5: 7-Day Trend Telemetry Validation      └─ S6: Field Performance Demo Dataset
+│    ├─ S5: 7-Day Trend Telemetry Validation      └─ S6: Field Performance Demo Dataset
 │
 ├── 📊 DA4 (Reporting & Quality Audit Lead)
 │    ├─ S1: PDF Audit Certificate Layout Specs    ├─ S2: 10 Niger Delta Test LAS Dataset
 │    ├─ S3: Quality Grade Range Verification      ├─ S4: PDF / Excel / CSV Exporters
-│    └─ S5: Enhanced PDF (7 Core Curves Table)    └─ S6: Demo Dataset Seeding & Sign-Off
-│           & Excel Workbook (4 Sheets)
+│    ├─ S5: Anomaly vs Cleaned Document Split     └─ S6: Demo Dataset Seeding & Sign-Off
 │
 ├── ☁️ CE1 (DevOps, CI/CD & Performance Lead)
 │    ├─ S1: Vercel Project & Environment Setup    ├─ S2: SSL HTTPS & GitHub Actions CI/CD
 │    ├─ S3: Next.js Chunk Splitting Optimization  ├─ S4: SVG Rendering Performance Tuning
-│    └─ S5: Concurrency Load & Latency Testing    └─ S6: Production Release & Custom Domain
+│    ├─ S5: Automated Jest Test Pipeline          └─ S6: Production Release & Custom Domain
 │
 └── ☁️ CE2 (Database, Security & Microservice Lead)
      ├─ S1: Neon PostgreSQL DB Provisioning       ├─ S2: Full Prisma Schema & Owner Indexes
      ├─ S3: Atomic Multi-Tenant DB Transaction    ├─ S4: Python FastAPI Imputation Service
-     └─ S5: Freemium Checks & Multi-Tenant Audit  └─ S6: Production DB Migration & Deploy
+     ├─ S5: Freemium Checks & Security Audit      └─ S6: Production DB Migration & Deploy
 ```
 
 ---
@@ -256,21 +282,27 @@ WellQC+ Development Team (8 Members)
 | 5.2 | `curveSummaries` API field in `WellListItem` & `WellDetailResponse` | SE1 | ✅ Done | 04 Sep 2026 | `api-types.ts` |
 | 5.3 | `extractCurveSummaries()` in `/api/wells/[id]` route | SE1 | ✅ Done | 04 Sep 2026 | `api/wells/[id]/route.ts` |
 | 5.4 | `CurveInventoryTable` integration in Well Detail page | SE2 | ✅ Done | 04 Sep 2026 | `wells/[id]/page.tsx` |
-| 5.5 | `localStorage` upload session persistence (`wellqc_upload_session`) | SE2 | ✅ Done | 04 Sep 2026 | `upload/page.tsx` |
+| 5.5 | `localStorage` upload session persistence (`wellqc_upload_workspace`) | SE2 | ✅ Done | 04 Sep 2026 | `upload/page.tsx` |
 | 5.6 | PDF report — 7 Core Curve Availability table (Gamma Ray, Bulk Density, etc.) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.7 | PDF report — Removed verbose curve inventory and anomaly detail tables | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.8 | PDF report — Expanded well metadata (Country, Lat/Long, Elevation, TD) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.9 | Excel workbook — `Curve Inventory` sheet (new, 3rd sheet) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.10 | Excel workbook — `Anomaly Log` sheet (new, conditional 4th sheet) | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
 | 5.11 | Excel workbook — Expanded `QA Summary` with AI summary & recommendations | DA4 | ✅ Done | 04 Sep 2026 | `reports/page.tsx` |
-| 5.12 | Paystack Payment Gateway & Pricing Portal | SE2 | 🔄 In Progress | — | `paystack.ts`, `payment-modal.tsx`, `/pricing` |
-| 5.13 | Freemium LAS check enforcement (`/api/las/check`) | CE2 | 🔄 In Progress | — | `api/las/check/route.ts` |
-| 5.14 | Multi-Tenant Security Audit | CE2 | 🔄 In Progress | — | All `/api/*` routes |
-| 5.15 | Global Header Search Bar & URL search sync (`/wells?search=...`) | SE2 | ✅ Done | 08 Sep 2026 | `header.tsx`, `wells/page.tsx` |
-| 5.16 | Jest & RTL Automated Test Suite (`jest.config.ts`, `__tests__/*`) | SE1 | ✅ Done | 08 Sep 2026 | `jest.config.ts`, `jest.setup.ts`, `__tests__/*` |
-| 5.17 | Automated LAS Data Cleaner Engine, Verification Audit UI & `cleaner.test.ts` | SE1 | ✅ Done | 09 Sep 2026 | `cleaner.ts`, `clean/route.ts`, `upload/page.tsx`, `cleaner.test.ts` |
+| 5.12 | Paystack Payment Gateway & Pricing Portal | SE2 | ✅ Done | 10 Sep 2026 | `paystack.ts`, `payment-modal.tsx`, `/pricing` |
+| 5.13 | In-Modal Paystack Sandbox Demo Runner & Instant Pro Upgrade | SE2 | ✅ Done | 10 Sep 2026 | `payment-modal.tsx`, `/api/auth/demo` |
+| 5.14 | Freemium LAS check enforcement (`/api/las/check`) | CE2 | ✅ Done | 10 Sep 2026 | `api/las/check/route.ts` |
+| 5.15 | Multi-Tenant Security Audit | CE2 | ✅ Done | 10 Sep 2026 | All `/api/*` routes |
+| 5.16 | Global Header Search Bar & URL search sync (`/wells?search=...`) | SE2 | ✅ Done | 08 Sep 2026 | `header.tsx`, `wells/page.tsx` |
+| 5.17 | Jest & RTL Automated Test Suite (`jest.config.ts`, `__tests__/*`) | SE1 | ✅ Done | 08 Sep 2026 | `jest.config.ts`, `jest.setup.ts`, `__tests__/*` |
+| 5.18 | Automated LAS Data Cleaner Engine, Verification Audit UI & `cleaner.test.ts` | SE1 | ✅ Done | 09 Sep 2026 | `cleaner.ts`, `clean/route.ts`, `cleaner.test.ts` |
+| 5.19 | Quality Engine: 11 Anomaly Categories & 7 Core Curves (`SP` included) | SE1 | ✅ Done | 14 Sep 2026 | `quality-engine.ts`, `quality-engine.test.ts` |
+| 5.20 | Real-Time Alias Auto-Propagation (`wellqc_alias_updated`) | DA1 | ✅ Done | 14 Sep 2026 | `standardiser.ts`, `standardisation/page.tsx` |
+| 5.21 | Upload Page: Strict "Detect and Flag Only" & 11 Anomaly Checks Grid | SE2 | ✅ Done | 14 Sep 2026 | `upload/page.tsx` |
+| 5.22 | Dedicated Quality Engine Page: Active Wells, Granular Toggles & Downloads | SE2 | ✅ Done | 14 Sep 2026 | `qa-engine/page.tsx`, `cleaner.ts` |
+| 5.23 | Reports Page: Demarcated Anomaly Document & Cleaned Document Tabs | DA4 | ✅ Done | 14 Sep 2026 | `reports/page.tsx` |
 
 ---
 
-> **WellQC+ v2.5.0-Enterprise** | Master Development Sprint Plan & Ownership Matrix  
-> Updated 09 Sep 2026 · Grounded 100% in Codebase · 8 Team Members (2 SE, 4 DA, 2 CE) · 6 Sprints.
+> **WellQC+ v2.6.0-Enterprise** | Master Development Sprint Plan & Ownership Matrix  
+> Updated 14 Sep 2026 · Grounded 100% in Codebase · 8 Team Members (2 SE, 4 DA, 2 CE) · 6 Sprints.

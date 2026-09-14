@@ -7,8 +7,6 @@ import { parseLASContent, ParsedLAS } from "@/lib/las/parser";
 import { analyzeWellLogQuality, QualityAnalysisResult } from "@/lib/las/quality-engine";
 import { generateAIAnalysis, AIAnalysisOutput } from "@/lib/las/ai-analyzer";
 import { standardiseMnemonic } from "@/lib/las/standardiser";
-import { buildCleanedDataExport } from "@/lib/las/exporter";
-import { cleanLASLogData, CleanedLogResult } from "@/lib/las/cleaner";
 import { SAMPLE_LAS_FILES, SampleLASFile } from "@/lib/sample-las-files";
 import { WellLogViewer } from "@/components/well-log/log-viewer";
 import { CurveInventoryTable } from "@/components/well-log/curve-inventory-table";
@@ -76,29 +74,24 @@ export default function LASUploadPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [restoredFromStorage, setRestoredFromStorage] = useState(false);
 
-  const [cleanedResult, setCleanedResult] = useState<CleanedLogResult | null>(null);
-  const [isCleaning, setIsCleaning] = useState(false);
-  const [activeLogView, setActiveLogView] = useState<"raw" | "cleaned">("raw");
+  // Listen for alias additions from Standardization Studio to auto-refresh QA results
+  useEffect(() => {
+    const handleAliasUpdated = (event: any) => {
+      try {
+        if (event?.detail?.qaResult) {
+          setQaResult(event.detail.qaResult);
+        } else if (parsedLAS) {
+          const reanalyzed = analyzeWellLogQuality(parsedLAS);
+          setQaResult(reanalyzed);
+        }
+      } catch (err) {
+        console.warn("Could not refresh QA on alias update", err);
+      }
+    };
 
-  const handleApplyAutoClean = () => {
-    if (!parsedLAS || !qaResult) return;
-    setIsCleaning(true);
-    try {
-      const result = cleanLASLogData(parsedLAS, qaResult, {
-        despiking: true,
-        outlierClipping: true,
-        unitStandardization: true,
-        duplicateDepthPruning: true,
-        imputationStrategy: "KNN",
-      });
-      setCleanedResult(result);
-      setActiveLogView("cleaned");
-    } catch (err) {
-      console.error("Auto clean failed", err);
-    } finally {
-      setIsCleaning(false);
-    }
-  };
+    window.addEventListener("wellqc_alias_updated", handleAliasUpdated);
+    return () => window.removeEventListener("wellqc_alias_updated", handleAliasUpdated);
+  }, [parsedLAS]);
 
   // 1. Restore from localStorage on initial mount (in case user refreshed page)
   useEffect(() => {
@@ -284,21 +277,25 @@ export default function LASUploadPage() {
     void processFileContent(sample.content, sample.name);
   };
 
-  const handleCleanedDataDownload = (format: "las" | "csv") => {
-    if (!parsedLAS || !qaResult) return;
-
-    const cleanedExport = buildCleanedDataExport(parsedLAS, qaResult);
+  const handleRawDataDownload = (format: "las" | "csv") => {
+    if (!parsedLAS || !rawText) return;
+    const baseName = fileName.replace(/\.[^/.]+$/, "") || "well-log";
 
     if (format === "las") {
-      downloadTextFile(
-        `${cleanedExport.fileStem}_cleaned.las`,
-        cleanedExport.lasContent,
-        "application/octet-stream;charset=utf-8",
-      );
+      downloadTextFile(`${baseName}_raw.las`, rawText, "text/plain;charset=utf-8");
       return;
     }
 
-    downloadTextFile(`${cleanedExport.fileStem}_cleaned.csv`, cleanedExport.csvContent, "text/csv;charset=utf-8");
+    // Export raw data CSV
+    const headers = ["DEPTH", ...parsedLAS.curves.map((c) => c.mnemonic)].join(",");
+    const rows = parsedLAS.data.depth.map((d, i) => {
+      const vals = parsedLAS.curves.map((c) => {
+        const v = parsedLAS.data.curves[c.mnemonic]?.[i];
+        return v !== undefined && !isNaN(v) ? v : parsedLAS.wellInfo.nullValue;
+      });
+      return [d, ...vals].join(",");
+    });
+    downloadTextFile(`${baseName}_raw.csv`, [headers, ...rows].join("\n"), "text/csv;charset=utf-8");
   };
 
   const commitFile = async (name: string, content: string) => {
@@ -612,18 +609,20 @@ export default function LASUploadPage() {
                 )}
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleCleanedDataDownload("las")}
-                    className="flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] font-mono transition-all"
+                    onClick={() => handleRawDataDownload("las")}
+                    className="flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-wellqc-card hover:bg-slate-700/60 border border-wellqc-border text-slate-200 font-bold text-[11px] font-mono transition-all"
+                    title="Download untouched raw LAS file"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Cleaned LAS</span>
+                    <span>Raw LAS</span>
                   </button>
                   <button
-                    onClick={() => handleCleanedDataDownload("csv")}
-                    className="flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-wellqc-card hover:bg-cyan-500/20 border border-wellqc-border hover:border-cyan-500/50 text-cyan-300 font-bold text-[11px] font-mono transition-all"
+                    onClick={() => handleRawDataDownload("csv")}
+                    className="flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-wellqc-card hover:bg-slate-700/60 border border-wellqc-border text-slate-200 font-bold text-[11px] font-mono transition-all"
+                    title="Export raw tabular curve CSV"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Cleaned CSV</span>
+                    <span>Raw CSV</span>
                   </button>
                 </div>
               </div>
@@ -659,132 +658,228 @@ export default function LASUploadPage() {
               </div>
             </div>
 
-            {/* Auto-Clean Action & Verification Audit Card */}
-            <div className="bg-wellqc-panel border border-cyan-500/40 rounded-2xl p-5 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                    <Sliders className="w-5 h-5" />
+            {/* QA/QC Anomaly Overview (Detect & Flag Only) */}
+            <div className="bg-wellqc-panel border border-cyan-500/40 rounded-2xl p-6 space-y-5 shadow-xl">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-wellqc-border pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-blue-500/20 text-cyan-300 border border-cyan-500/30">
+                      QA/QC Analysis — Detect &amp; Flag Mode
+                    </span>
+                    <span className="text-xs text-wellqc-muted font-mono">
+                      (Original LAS file remains strictly untouched)
+                    </span>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">Automated LAS Data Cleaning &amp; Verification Engine</h3>
-                    <p className="text-xs text-wellqc-muted font-mono">
-                      Removes physical outliers, despikes extreme jumps, standardizes units/mnemonics, prunes duplicate depths, and imputes null gaps.
-                    </p>
-                  </div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">
+                    Pre-Ingestion Anomaly &amp; Petrophysical Integrity Overview
+                  </h3>
                 </div>
 
-                <button
-                  onClick={handleApplyAutoClean}
-                  disabled={isCleaning}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold text-xs font-mono shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
-                >
-                  {isCleaning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                  <span>{isCleaning ? "Cleaning LAS Data..." : "✨ Apply Auto-Clean & Repair"}</span>
-                </button>
-              </div>
-
-              {cleanedResult && (
-                <div className="bg-wellqc-dark/80 border border-emerald-500/40 rounded-xl p-4 space-y-3 font-mono">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-wellqc-border pb-2.5">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-bold text-emerald-300 uppercase tracking-wide">
-                        {cleanedResult.verificationReport.isVerifiedClean ? "VERIFIED CLEAN CERTIFIED" : "CLEANING VERIFICATION COMPLETE"}
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2 text-xs">
-                      <span className="text-slate-400">Quality Score Boost:</span>
-                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 line-through">
-                        {cleanedResult.verificationReport.originalQualityScore}% ({cleanedResult.verificationReport.originalGrade})
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
-                        {cleanedResult.verificationReport.cleanedQualityScore}% ({cleanedResult.verificationReport.cleanedGrade}) [+{cleanedResult.verificationReport.scoreImprovement}%]
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
-                    <div className="p-2 rounded bg-wellqc-card border border-wellqc-border text-center">
-                      <span className="text-slate-400 block text-[10px]">Outliers Clipped</span>
-                      <span className="font-bold text-cyan-300 text-sm">{cleanedResult.verificationReport.outliersRemovedCount}</span>
-                    </div>
-                    <div className="p-2 rounded bg-wellqc-card border border-wellqc-border text-center">
-                      <span className="text-slate-400 block text-[10px]">Spikes Despiked</span>
-                      <span className="font-bold text-cyan-300 text-sm">{cleanedResult.verificationReport.spikesDespikedCount}</span>
-                    </div>
-                    <div className="p-2 rounded bg-wellqc-card border border-wellqc-border text-center">
-                      <span className="text-slate-400 block text-[10px]">Units Standardized</span>
-                      <span className="font-bold text-cyan-300 text-sm">{cleanedResult.verificationReport.unitsConvertedCount}</span>
-                    </div>
-                    <div className="p-2 rounded bg-wellqc-card border border-wellqc-border text-center">
-                      <span className="text-slate-400 block text-[10px]">Duplicates Pruned</span>
-                      <span className="font-bold text-cyan-300 text-sm">{cleanedResult.verificationReport.duplicateDepthsPrunedCount}</span>
-                    </div>
-                    <div className="p-2 rounded bg-wellqc-card border border-wellqc-border text-center">
-                      <span className="text-slate-400 block text-[10px]">Nulls Imputed (KNN)</span>
-                      <span className="font-bold text-emerald-400 text-sm">{cleanedResult.verificationReport.nullsImputedCount}</span>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-emerald-200/90 pt-1">
-                    {cleanedResult.verificationReport.summaryMessage}
-                  </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link
+                    href="/reports"
+                    className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-wellqc-card hover:bg-slate-700/60 border border-wellqc-border hover:border-cyan-500/40 text-cyan-300 font-bold text-xs font-mono transition-all"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>View Audit Report →</span>
+                  </Link>
+                  <Link
+                    href="/qa-engine"
+                    className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold text-xs font-mono shadow-lg shadow-emerald-500/20 transition-all"
+                  >
+                    <Sliders className="w-4 h-4" />
+                    <span>Send to Quality Engine for Correction →</span>
+                  </Link>
                 </div>
-              )}
+              </div>
+
+              {/* 4 Summary Metric Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl bg-wellqc-card border border-wellqc-border font-mono">
+                  <span className="text-[10px] text-wellqc-muted uppercase block">Curves Detected</span>
+                  <div className="text-xl font-black text-white mt-0.5">
+                    {parsedLAS.curves.length} <span className="text-xs text-slate-400 font-normal">Channels</span>
+                  </div>
+                  <span className="text-[10px] text-cyan-400">Extracted from ~C Section</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-wellqc-card border border-wellqc-border font-mono">
+                  <span className="text-[10px] text-wellqc-muted uppercase block">Anomalies Detected</span>
+                  <div className="text-xl font-black text-amber-400 mt-0.5">
+                    {qaResult.anomalyCount} <span className="text-xs text-slate-400 font-normal">Issues</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {qaResult.criticalCount} Critical · {qaResult.warningCount} Warnings
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-wellqc-card border border-wellqc-border font-mono">
+                  <span className="text-[10px] text-wellqc-muted uppercase block">Required Core Curves</span>
+                  <div className={`text-xl font-black mt-0.5 ${qaResult.missingStandardCurves.length === 0 ? "text-emerald-400" : "text-amber-300"}`}>
+                    {7 - qaResult.missingStandardCurves.length} / 7
+                  </div>
+                  <span className="text-[10px] text-slate-400 truncate block">
+                    {qaResult.missingStandardCurves.length > 0 ? `Missing: ${qaResult.missingStandardCurves.join(", ")}` : "GR, RHOB, NPHI, DT, RT, CALI, SP ✓"}
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-wellqc-card border border-wellqc-border font-mono">
+                  <span className="text-[10px] text-wellqc-muted uppercase block">Overall Quality Status</span>
+                  <div className={`text-xl font-black mt-0.5 ${
+                    qaResult.overallScore >= 80 ? "text-emerald-400" :
+                    qaResult.overallScore >= 60 ? "text-cyan-400" :
+                    qaResult.overallScore >= 40 ? "text-amber-400" : "text-rose-400"
+                  }`}>
+                    {qaResult.qualityGrade}
+                  </div>
+                  <span className="text-[10px] text-slate-400">Index: {qaResult.overallScore} / 100</span>
+                </div>
+              </div>
+
+              {/* 11 Anomaly Categories Check Grid */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-mono text-wellqc-muted uppercase font-bold tracking-wider">
+                  Automated Anomaly Audit Checks:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 font-mono text-xs">
+                  {/* 1. Missing or Duplicate Depths */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "DUPLICATE_DEPTH").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-red-500/10 border-red-500/30 text-red-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Missing / Duplicate Depths</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Flagged` : "Clean ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 2. Depth Gaps */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "DEPTH_GAP").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Depth Gaps / Discontinuities</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Gaps` : "Clean ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 3. Null Values & Clusters */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "NULL_CLUSTER").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Nulls &amp; Null Clusters</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Clusters` : "Clean ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 4. Outside Physical Ranges */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "IMPOSSIBLE_VALUE").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-red-500/10 border-red-500/30 text-red-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Outside Physical Limits</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Outliers` : "Clean ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 5. Extreme Outliers */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "EXTREME_SPIKE" && !a.curveMnemonic.toUpperCase().includes("DT")).length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Extreme / Outlier Spikes</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Spikes` : "Clean ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 6. Spikes in DT */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "EXTREME_SPIKE" && (a.curveMnemonic.toUpperCase().includes("DT") || a.description.toLowerCase().includes("sonic"))).length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-red-500/10 border-red-500/30 text-red-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">DT Acoustic Cycle Jumps</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Jumps` : "Clean ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 7. Flatlines */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "FLATLINE").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Stuck / Flatline Sensor</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Flatlines` : "Clean ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 8. Unit Mismatches */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "UNIT_MISMATCH").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-blue-500/10 border-blue-500/30 text-cyan-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Unit Mismatches</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Mismatches` : "Aligned ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 9. Non-standard Mnemonics */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "NON_STANDARD_MNEMONIC").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-purple-500/10 border-purple-500/30 text-purple-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Non-Standard Mnemonics</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Unmapped` : "Standardised ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 10. Duplicate Curves */}
+                  {(() => {
+                    const cnt = qaResult.anomalies.filter((a) => a.anomalyType === "DUPLICATE_CURVE").length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between ${cnt > 0 ? "bg-red-500/10 border-red-500/30 text-red-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Duplicate Curve Headers</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Duplicate` : "Unique ✓"}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 11. Missing Core Curves */}
+                  {(() => {
+                    const cnt = qaResult.missingStandardCurves.length;
+                    return (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between sm:col-span-2 lg:col-span-2 ${cnt > 0 ? "bg-amber-500/10 border-amber-500/30 text-amber-300" : "bg-wellqc-card/60 border-wellqc-border text-slate-300"}`}>
+                        <span className="truncate">Required Core Curves (GR, RHOB, NPHI, DT, RT, CALI, SP)</span>
+                        <span className="font-bold">{cnt > 0 ? `${cnt} Missing: ${qaResult.missingStandardCurves.join(", ")}` : "All 7 Core Curves Present ✓"}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
             </div>
 
-            {/* Wireline Viewer Controls (Raw vs Cleaned Log Switcher) */}
-            <div className="flex items-center justify-between bg-wellqc-card border border-wellqc-border p-2.5 rounded-xl font-mono text-xs">
-              <div className="flex items-center space-x-2">
-                <Eye className="w-4 h-4 text-cyan-400" />
-                <span className="text-slate-300 font-bold">Log Viewer Mode:</span>
-              </div>
-              <div className="flex items-center space-x-1.5">
-                <button
-                  type="button"
-                  onClick={() => setActiveLogView("raw")}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                    activeLogView === "raw"
-                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  Raw Dirty Log ({parsedLAS.wellInfo.wellName})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!cleanedResult) handleApplyAutoClean();
-                    else setActiveLogView("cleaned");
-                  }}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 ${
-                    activeLogView === "cleaned"
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <Sparkles className="w-3 h-3 text-emerald-400" />
-                  <span>Cleaned Repaired Log</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Multi-Track Log Viewer */}
+            {/* Untouched Original Multi-Track Log Viewer */}
             <WellLogViewer
-              wellName={activeLogView === "cleaned" && cleanedResult ? `${cleanedResult.cleanedLas.wellInfo.wellName} (CLEANED)` : parsedLAS.wellInfo.wellName}
+              wellName={`${parsedLAS.wellInfo.wellName} (Original Untouched Raw)`}
               depthUnit={parsedLAS.wellInfo.depthUnit}
               startDepth={parsedLAS.wellInfo.startDepth}
               stopDepth={parsedLAS.wellInfo.stopDepth}
-              curvesData={activeLogView === "cleaned" && cleanedResult ? cleanedResult.cleanedLas.data : parsedLAS.data}
-              anomalies={activeLogView === "cleaned" && cleanedResult ? cleanedResult.cleanedQa.anomalies : qaResult.anomalies}
+              curvesData={parsedLAS.data}
+              anomalies={qaResult.anomalies}
             />
 
-            {/* Curve Standardisation & Health Breakdown Table */}
+            {/* Raw Curve Standardisation & Anomaly Breakdown Table */}
             <CurveInventoryTable
-              curveSummaries={activeLogView === "cleaned" && cleanedResult ? cleanedResult.cleanedQa.curveSummaries : qaResult.curveSummaries}
-              title={activeLogView === "cleaned" ? "Verified Cleaned Curve Inventory" : "Raw Curve Standardisation & Quality Inventory"}
+              curveSummaries={qaResult.curveSummaries}
+              title="Raw Curve Standardisation &amp; Anomaly Inventory"
             />
           </div>
         )}

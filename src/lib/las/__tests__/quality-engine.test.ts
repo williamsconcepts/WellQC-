@@ -20,12 +20,14 @@ describe("Well Log Quality Engine Suite", () => {
  NPHI .V/V  : NEUTRON POROSITY
  DT   .US/F : SONIC DELTA T
  RT   .OHMM : RESISTIVITY
+ CALI .IN   : CALIPER
+ SP   .MV   : SPONTANEOUS POTENTIAL
 ~ASCII LOG DATA
- 1000.0   45.2   2.45   0.15   65.0   12.5
- 1000.5   48.1   2.48   0.16   66.2   13.0
- 1001.0   50.3   2.50   0.17   67.1   14.2
- 1001.5   52.0   2.51   0.18   68.0   15.0
- 1002.0   55.4   2.53   0.19   69.2   16.1
+ 1000.0   45.2   2.45   0.15   65.0   12.5   8.5   -20.0
+ 1000.5   48.1   2.48   0.16   66.2   13.0   8.5   -21.0
+ 1001.0   50.3   2.50   0.17   67.1   14.2   8.5   -20.5
+ 1001.5   52.0   2.51   0.18   68.0   15.0   8.5   -22.0
+ 1002.0   55.4   2.53   0.19   69.2   16.1   8.5   -21.5
 `.trim();
 
     const parsed = parseLASContent(cleanLas);

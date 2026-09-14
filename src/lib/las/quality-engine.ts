@@ -8,13 +8,16 @@ export interface AnomalyReportItem {
   depthEnd: number;
   anomalyType: 
     | 'IMPOSSIBLE_VALUE'
+    | 'OUTLIER_VALUE'
     | 'EXTREME_SPIKE'
     | 'FLATLINE'
     | 'DEPTH_GAP'
     | 'NULL_CLUSTER'
     | 'UNIT_MISMATCH'
+    | 'NON_STANDARD_MNEMONIC'
     | 'DUPLICATE_CURVE'
-    | 'DUPLICATE_DEPTH';
+    | 'DUPLICATE_DEPTH'
+    | 'MISSING_CORE_CURVE';
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   description: string;
   suggestedCorrection: string;
@@ -91,9 +94,30 @@ export function analyzeWellLogQuality(las: ParsedLAS): QualityAnalysisResult {
     }
   }
 
-  // 2. Track Standard Curves Inventory
+  // 2. Duplicate Curve Detection in Curve Definitions
+  const seenCurveMnemonics = new Map<string, string>();
+  const seenStandardMnemonics = new Map<string, string>();
+
+  for (const cMeta of las.curves) {
+    const upper = cMeta.mnemonic.trim().toUpperCase();
+    if (seenCurveMnemonics.has(upper)) {
+      anomalies.push({
+        curveMnemonic: cMeta.mnemonic,
+        depthStart: las.wellInfo.startDepth,
+        depthEnd: las.wellInfo.stopDepth,
+        anomalyType: 'DUPLICATE_CURVE',
+        severity: 'WARNING',
+        description: `Duplicate curve channel '${cMeta.mnemonic}' detected in LAS file (~C section).`,
+        suggestedCorrection: 'Deduplicate curve channels or verify tool run headers.',
+      });
+    } else {
+      seenCurveMnemonics.set(upper, cMeta.mnemonic);
+    }
+  }
+
+  // 3. Track Standard Curves Inventory
   const presentStandardMnemonics = new Set<string>();
-  const expectedKeyCurves = ['GR', 'RHOB', 'NPHI', 'DT', 'RT', 'CALI'];
+  const expectedKeyCurves = ['GR', 'RHOB', 'NPHI', 'DT', 'RT', 'CALI', 'SP'];
 
   // 3. Process Each Log Curve Channel
   for (const cMeta of las.curves) {
@@ -102,6 +126,19 @@ export function analyzeWellLogQuality(las: ParsedLAS): QualityAnalysisResult {
     
     if (stdRes.standardMnemonic !== 'UNKNOWN') {
       presentStandardMnemonics.add(stdRes.standardMnemonic);
+    } else {
+      const isIndexCurve = ['DEPT', 'DEPTH', 'TIME', 'INDEX'].includes(cMeta.mnemonic.toUpperCase().trim());
+      if (!isIndexCurve) {
+        anomalies.push({
+          curveMnemonic: cMeta.mnemonic,
+          depthStart: las.wellInfo.startDepth,
+          depthEnd: las.wellInfo.stopDepth,
+          anomalyType: 'NON_STANDARD_MNEMONIC',
+          severity: 'INFO',
+          description: `Non-standard curve mnemonic '${cMeta.mnemonic}'. Not recognized in standard petrophysical ontology.`,
+          suggestedCorrection: `Map '${cMeta.mnemonic}' to standard mnemonic in Standardization Studio.`,
+        });
+      }
     }
 
     if (stdRes.unitMismatch) {
@@ -194,7 +231,9 @@ export function analyzeWellLogQuality(las: ParsedLAS): QualityAnalysisResult {
         });
       }
 
-      // B. Spike Detection (Z-Score > 4.0 or sudden jump)
+      // B. Spike Detection (Z-Score > 4.0 or sudden jump, heightened sensitivity for DT sonic travel time)
+      const isDT = stdRes.standardMnemonic === 'DT' || cMeta.mnemonic.toUpperCase().includes('DT');
+      const spikeThreshold = isDT ? 3.0 * stdDev : 4.5 * stdDev;
       if (stdDev > 0.001) {
         for (let i = 1; i < validPoints.length - 1; i++) {
           const pPrev = validPoints[i - 1];
@@ -204,20 +243,40 @@ export function analyzeWellLogQuality(las: ParsedLAS): QualityAnalysisResult {
           const diffPrev = Math.abs(pCurr.val - pPrev.val);
           const diffNext = Math.abs(pCurr.val - pNext.val);
 
-          if (diffPrev > 4.5 * stdDev && diffNext > 4.5 * stdDev) {
-            if (curveAnomalies.filter((a) => a.anomalyType === 'EXTREME_SPIKE').length < 5) {
+          const isSpike = (diffPrev > spikeThreshold && diffNext > spikeThreshold) || (isDT && diffPrev > 25 && diffNext > 25);
+          if (isSpike) {
+            if (curveAnomalies.filter((a) => a.anomalyType === 'EXTREME_SPIKE').length < 6) {
               curveAnomalies.push({
                 curveMnemonic: cMeta.mnemonic,
                 depthStart: pCurr.depth,
                 depthEnd: pCurr.depth,
                 anomalyType: 'EXTREME_SPIKE',
                 severity: 'WARNING',
-                description: `Unrealistic spike value ${pCurr.val.toFixed(2)} detected at depth ${pCurr.depth} ${las.wellInfo.depthUnit}`,
-                suggestedCorrection: 'Apply median despiking filter across 5-point window.',
+                description: `${isDT ? 'Sonic cycle skip / spike' : 'Unrealistic spike value'} ${pCurr.val.toFixed(2)} detected at depth ${pCurr.depth} ${las.wellInfo.depthUnit}`,
+                suggestedCorrection: isDT ? 'Apply sonic despiking filter or 5-point median window.' : 'Apply median despiking filter across 5-point window.',
               });
             }
           }
         }
+
+        // Outlier values (beyond 4.0 stdDev, but not already flagged as impossible values)
+        validPoints.forEach((p) => {
+          const zScore = Math.abs(p.val - meanVal!) / stdDev;
+          const isImpossible = stdDef && (p.val < stdDef.minPhysical || p.val > stdDef.maxPhysical);
+          if (!isImpossible && zScore > 4.0) {
+            if (curveAnomalies.filter((a) => a.anomalyType === 'OUTLIER_VALUE').length < 4) {
+              curveAnomalies.push({
+                curveMnemonic: cMeta.mnemonic,
+                depthStart: p.depth,
+                depthEnd: p.depth,
+                anomalyType: 'OUTLIER_VALUE',
+                severity: 'WARNING',
+                description: `Statistical outlier value ${p.val.toFixed(2)} ${cMeta.unit} (Z-Score: ${zScore.toFixed(1)}σ) at depth ${p.depth}`,
+                suggestedCorrection: 'Review log interval against offset wells or clip outlier.',
+              });
+            }
+          }
+        });
       }
 
       // C. Flatline Sensor Detection (> 25 consecutive identical points)
@@ -288,11 +347,22 @@ export function analyzeWellLogQuality(las: ParsedLAS): QualityAnalysisResult {
 
   // 4. Missing Key Standard Curves
   const missingStandardCurves = expectedKeyCurves.filter((c) => !presentStandardMnemonics.has(c));
+  missingStandardCurves.forEach((missingMnem) => {
+    anomalies.push({
+      curveMnemonic: missingMnem,
+      depthStart: las.wellInfo.startDepth,
+      depthEnd: las.wellInfo.stopDepth,
+      anomalyType: 'MISSING_CORE_CURVE',
+      severity: 'WARNING',
+      description: `Missing required core curve '${missingMnem}'. WellQC+ core curves required: GR, RHOB, NPHI, DT, RT, CALI, and SP.`,
+      suggestedCorrection: `Verify if '${missingMnem}' is logged under an alternative mnemonic and alias it in Standardisation Studio, or acquire log.`,
+    });
+  });
 
   // 5. Compute Aggregate Quality Scores
   const completenessScore = Math.max(
     0,
-    Math.round(100 - (missingStandardCurves.length * 12 + (anomalies.filter((a) => a.anomalyType === 'NULL_CLUSTER').length * 5)))
+    Math.round(100 - (missingStandardCurves.length * 10 + (anomalies.filter((a) => a.anomalyType === 'NULL_CLUSTER').length * 4)))
   );
 
   const avgCurveHealth = curveSummaries.length > 0

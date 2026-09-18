@@ -10,7 +10,11 @@ import {
   Layout,
   Printer,
   Sparkles,
+  LineChart,
+  Columns,
+  Table,
 } from "lucide-react";
+import { WellLogDataTable } from "./log-data-table";
 
 interface LogViewerProps {
   wellName: string;
@@ -39,9 +43,10 @@ export function WellLogViewer({
   curvesData,
   anomalies = [],
 }: LogViewerProps) {
+  const [layoutMode, setLayoutMode] = useState<"GRAPH" | "SPLIT" | "TABLE">("GRAPH");
   const [viewMode, setViewMode] = useState<"CLASSIC_PAPER" | "DARK_MODERN">("CLASSIC_PAPER");
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [selectedTrack, setSelectedTrack] = useState<"ALL" | "GAMMA" | "RESISTIVITY" | "SONIC">("ALL");
+  const [selectedDepth, setSelectedDepth] = useState<number | null>(null);
 
   const depthArr = curvesData.depth || [];
   const totalPoints = depthArr.length;
@@ -125,85 +130,10 @@ export function WellLogViewer({
     depthTicks.push(d);
   }
 
-  return (
-    <div className="space-y-4 font-sans">
-      {/* Top Action Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-wellqc-panel border border-wellqc-border rounded-xl shadow-lg">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <h3 className="text-base font-extrabold text-white tracking-tight">
-              {wellName} — Subsurface Wireline Log Viewer
-            </h3>
-          </div>
-          <p className="text-xs text-wellqc-muted font-mono mt-0.5">
-            Depth Interval: {minDepth} – {maxDepth} {depthUnit} | Track Orientation: Vertical Wireline Log
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-          {/* Mode Switcher Toggle */}
-          <div className="flex items-center bg-wellqc-card border border-wellqc-border rounded-xl p-1 shadow-inner">
-            <button
-              onClick={() => setViewMode("CLASSIC_PAPER")}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${viewMode === "CLASSIC_PAPER"
-                ? "bg-red-600 text-white shadow-md shadow-red-600/30"
-                : "text-slate-400 hover:text-white"
-                }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Classic Paper Borehole Log</span>
-            </button>
-
-            <button
-              onClick={() => setViewMode("DARK_MODERN")}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${viewMode === "DARK_MODERN"
-                ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/30"
-                : "text-slate-400 hover:text-white"
-                }`}
-            >
-              <Layout className="w-3.5 h-3.5" />
-              <span>Dark Subsurface View</span>
-            </button>
-          </div>
-
-          {/* Zoom & Track Controls */}
-          <div className="flex items-center space-x-1 bg-wellqc-card border border-wellqc-border rounded-xl p-1">
-            <button
-              onClick={() => setZoomLevel((z) => Math.min(z + 0.25, 3.0))}
-              className="p-1.5 text-slate-300 hover:text-cyan-400"
-              title="Zoom In Vertical Scale"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setZoomLevel((z) => Math.max(z - 0.25, 0.6))}
-              className="p-1.5 text-slate-300 hover:text-cyan-400"
-              title="Zoom Out Vertical Scale"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setZoomLevel(1)}
-              className="p-1.5 text-slate-300 hover:text-cyan-400"
-              title="Reset Scale"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-          </div>
-
-          <button
-            onClick={() => window.print()}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-wellqc-card border border-wellqc-border text-slate-300 hover:text-white font-bold transition-colors"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Print Log</span>
-          </button>
-        </div>
-      </div>
-
-      {/* CLASSIC BOREHOLE LOG PRESENTATION MODE (EXACT MATCH TO REFERENCE IMAGE) */}
-      {viewMode === "CLASSIC_PAPER" && (
+  // Graphical Log Rendering
+  const renderGraphLog = () => {
+    if (viewMode === "CLASSIC_PAPER") {
+      return (
         <div className="bg-white text-black p-4 border-4 border-red-600 rounded-lg shadow-2xl overflow-x-auto select-none font-serif">
           {/* Main Title Banner Header */}
           <div className="border-2 border-black mb-1 p-2 flex flex-col md:flex-row md:items-center justify-between bg-white text-black text-center font-bold">
@@ -228,7 +158,7 @@ export function WellLogViewer({
           </div>
 
           {/* Log Track Header Box */}
-          <div className="grid grid-cols-12 border-2 border-black bg-white text-black font-sans font-bold text-center text-xs">
+          <div className="grid grid-cols-12 border-2 border-black bg-white text-black font-sans font-bold text-center text-xs min-w-[580px]">
             {/* Depth Header */}
             <div className="col-span-2 border-r-2 border-black p-2 flex flex-col justify-between bg-slate-100">
               <div>Depth</div>
@@ -270,7 +200,7 @@ export function WellLogViewer({
           </div>
 
           {/* Main Log Grid Body (Vertical Wireline Plot) */}
-          <div className="relative border-2 border-t-0 border-black bg-white overflow-hidden" style={{ height: `${svgHeight}px` }}>
+          <div className="relative border-2 border-t-0 border-black bg-white overflow-hidden min-w-[580px]" style={{ height: `${svgHeight}px` }}>
             {/* Background Graph Grid Pattern */}
             <div
               className="absolute inset-0 pointer-events-none"
@@ -283,6 +213,18 @@ export function WellLogViewer({
                 backgroundSize: `16.66% 40px, 100% 40px, 100% 10px`,
               }}
             />
+
+            {/* Selected Depth Marker Line */}
+            {selectedDepth !== null && selectedDepth >= minDepth && selectedDepth <= maxDepth && (
+              <div
+                className="absolute left-0 right-0 border-b-2 border-cyan-500 z-30 pointer-events-none flex items-center justify-end pr-2"
+                style={{ top: `${mapDepthToY(selectedDepth)}px` }}
+              >
+                <span className="bg-cyan-600 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shadow">
+                  Target Depth: {selectedDepth.toFixed(1)} {depthUnit}
+                </span>
+              </div>
+            )}
 
             <div className="grid grid-cols-12 h-full relative z-10 font-sans">
               {/* Depth Column */}
@@ -394,7 +336,7 @@ export function WellLogViewer({
                   );
                 })}
 
-                {/* Anomaly Pointer Callout Labels (e.g. SONIC SPIKE (CYCLE SKIP)) */}
+                {/* Anomaly Pointer Callout Labels */}
                 {anomalies
                   .filter((a) => a.anomalyType === "EXTREME_SPIKE" || a.anomalyType === "IMPOSSIBLE_VALUE")
                   .map((an, i) => {
@@ -414,67 +356,255 @@ export function WellLogViewer({
             </div>
           </div>
         </div>
-      )}
+      );
+    }
 
-      {/* MODERN DARK SUB-SURFACE VIEW MODE */}
-      {viewMode === "DARK_MODERN" && (
-        <div className="bg-wellqc-card border border-wellqc-border rounded-xl p-5 shadow-2xl space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono">
-            {/* Track 1 Dark */}
-            <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-3">
-              <div className="flex items-center justify-between pb-2 border-b border-wellqc-border mb-2 text-xs font-bold text-emerald-400">
-                <span>TRACK 1: GAMMA RAY (GR)</span>
-                <span>0 – 150 GAPI</span>
-              </div>
-              <div className="h-96 relative bg-wellqc-dark rounded-lg overflow-hidden p-2 border border-wellqc-border">
-                <svg className="w-full h-full overflow-visible">
-                  <polyline
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth="2"
-                    points={renderSvgCurve(grValues, 0, 150, 240, "#10b981")}
-                  />
-                </svg>
-              </div>
+    // Modern Dark Mode
+    return (
+      <div className="bg-wellqc-card border border-wellqc-border rounded-xl p-5 shadow-2xl space-y-4">
+        {selectedDepth !== null && (
+          <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/30 rounded-lg flex items-center justify-between text-xs font-mono text-cyan-300">
+            <span>Synchronized Depth Marker:</span>
+            <span className="font-bold">{selectedDepth.toFixed(1)} {depthUnit}</span>
+          </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono">
+          {/* Track 1 Dark */}
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-3">
+            <div className="flex items-center justify-between pb-2 border-b border-wellqc-border mb-2 text-xs font-bold text-emerald-400">
+              <span>TRACK 1: GAMMA RAY (GR)</span>
+              <span>0 – 150 GAPI</span>
             </div>
-
-            {/* Track 2 Dark */}
-            <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-3">
-              <div className="flex items-center justify-between pb-2 border-b border-wellqc-border mb-2 text-xs font-bold text-red-400">
-                <span>TRACK 2: RESISTIVITY (RT)</span>
-                <span>0.2 – 2000 OHMM</span>
-              </div>
-              <div className="h-96 relative bg-wellqc-dark rounded-lg overflow-hidden p-2 border border-wellqc-border">
-                <svg className="w-full h-full overflow-visible">
-                  <polyline
-                    fill="none"
-                    stroke="#ef4444"
-                    strokeWidth="2"
-                    points={renderSvgCurve(rtValues, 0.2, 2000, 240, "#ef4444")}
-                  />
-                </svg>
-              </div>
+            <div className="h-96 relative bg-wellqc-dark rounded-lg overflow-hidden p-2 border border-wellqc-border">
+              <svg className="w-full h-full overflow-visible">
+                <polyline
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="2"
+                  points={renderSvgCurve(grValues, 0, 150, 240, "#10b981")}
+                />
+              </svg>
             </div>
+          </div>
 
-            {/* Track 3 Dark */}
-            <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-3">
-              <div className="flex items-center justify-between pb-2 border-b border-wellqc-border mb-2 text-xs font-bold text-cyan-400">
-                <span>TRACK 3: SONIC (DT)</span>
-                <span>40 – 240 &mu;s/ft</span>
-              </div>
-              <div className="h-96 relative bg-wellqc-dark rounded-lg overflow-hidden p-2 border border-wellqc-border">
-                <svg className="w-full h-full overflow-visible">
-                  <polyline
-                    fill="none"
-                    stroke="#06b6d4"
-                    strokeWidth="2"
-                    points={renderSvgCurve(dtValues, 40, 240, 240, "#06b6d4")}
-                  />
-                </svg>
-              </div>
+          {/* Track 2 Dark */}
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-3">
+            <div className="flex items-center justify-between pb-2 border-b border-wellqc-border mb-2 text-xs font-bold text-red-400">
+              <span>TRACK 2: RESISTIVITY (RT)</span>
+              <span>0.2 – 2000 OHMM</span>
+            </div>
+            <div className="h-96 relative bg-wellqc-dark rounded-lg overflow-hidden p-2 border border-wellqc-border">
+              <svg className="w-full h-full overflow-visible">
+                <polyline
+                  fill="none"
+                  stroke="#ef4444"
+                  strokeWidth="2"
+                  points={renderSvgCurve(rtValues, 0.2, 2000, 240, "#ef4444")}
+                />
+              </svg>
+            </div>
+          </div>
+
+          {/* Track 3 Dark */}
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-3">
+            <div className="flex items-center justify-between pb-2 border-b border-wellqc-border mb-2 text-xs font-bold text-cyan-400">
+              <span>TRACK 3: SONIC (DT)</span>
+              <span>40 – 240 &mu;s/ft</span>
+            </div>
+            <div className="h-96 relative bg-wellqc-dark rounded-lg overflow-hidden p-2 border border-wellqc-border">
+              <svg className="w-full h-full overflow-visible">
+                <polyline
+                  fill="none"
+                  stroke="#06b6d4"
+                  strokeWidth="2"
+                  points={renderSvgCurve(dtValues, 40, 240, 240, "#06b6d4")}
+                />
+              </svg>
             </div>
           </div>
         </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4 font-sans">
+      {/* Top Action Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-wellqc-panel border border-wellqc-border rounded-xl shadow-lg">
+        <div>
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <h3 className="text-base font-extrabold text-white tracking-tight">
+              {wellName} — Wireline Subsurface Explorer
+            </h3>
+          </div>
+          <p className="text-xs text-wellqc-muted font-mono mt-0.5">
+            Depth Interval: {minDepth} – {maxDepth} {depthUnit} | {totalPoints.toLocaleString()} Recorded Samples
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+          {/* Layout Mode Switcher Toggle (Graph vs Split vs Table) */}
+          <div className="flex items-center bg-wellqc-card border border-wellqc-border rounded-xl p-1 shadow-inner">
+            <button
+              onClick={() => setLayoutMode("GRAPH")}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                layoutMode === "GRAPH"
+                  ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Show graphical well log plot only"
+            >
+              <LineChart className="w-3.5 h-3.5" />
+              <span>Log Plot</span>
+            </button>
+
+            <button
+              onClick={() => setLayoutMode("SPLIT")}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                layoutMode === "SPLIT"
+                  ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Show graphical log and tabular data side-by-side"
+            >
+              <Columns className="w-3.5 h-3.5" />
+              <span>Split View</span>
+            </button>
+
+            <button
+              onClick={() => setLayoutMode("TABLE")}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                layoutMode === "TABLE"
+                  ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Show full tabular numerical spreadsheet view"
+            >
+              <Table className="w-3.5 h-3.5" />
+              <span>Data Table</span>
+            </button>
+          </div>
+
+          {/* Graphical Theme Switcher (Only visible when Graph or Split is active) */}
+          {layoutMode !== "TABLE" && (
+            <div className="flex items-center bg-wellqc-card border border-wellqc-border rounded-xl p-1 shadow-inner">
+              <button
+                onClick={() => setViewMode("CLASSIC_PAPER")}
+                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg font-bold transition-all ${
+                  viewMode === "CLASSIC_PAPER"
+                    ? "bg-red-600 text-white shadow-md shadow-red-600/30"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="Switch to Classic Borehole Paper Log styling"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Paper Log</span>
+              </button>
+
+              <button
+                onClick={() => setViewMode("DARK_MODERN")}
+                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg font-bold transition-all ${
+                  viewMode === "DARK_MODERN"
+                    ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/30"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="Switch to Dark Subsurface styling"
+              >
+                <Layout className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Dark Subsurface</span>
+              </button>
+            </div>
+          )}
+
+          {/* Zoom & Track Controls (For Graph View) */}
+          {layoutMode !== "TABLE" && (
+            <div className="flex items-center space-x-1 bg-wellqc-card border border-wellqc-border rounded-xl p-1">
+              <button
+                onClick={() => setZoomLevel((z) => Math.min(z + 0.25, 3.0))}
+                className="p-1.5 text-slate-300 hover:text-cyan-400"
+                title="Zoom In Vertical Scale"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setZoomLevel((z) => Math.max(z - 0.25, 0.6))}
+                className="p-1.5 text-slate-300 hover:text-cyan-400"
+                title="Zoom Out Vertical Scale"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setZoomLevel(1)}
+                className="p-1.5 text-slate-300 hover:text-cyan-400"
+                title="Reset Scale"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => window.print()}
+            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-wellqc-card border border-wellqc-border text-slate-300 hover:text-white font-bold transition-colors"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Print Log</span>
+          </button>
+        </div>
+      </div>
+
+      {/* RENDER VIEW ACCORDING TO LAYOUT MODE */}
+
+      {/* 1. GRAPH ONLY MODE */}
+      {layoutMode === "GRAPH" && renderGraphLog()}
+
+      {/* 2. SPLIT VIEW (SIDE-BY-SIDE GRAPH LOG & TABULAR DATA) */}
+      {layoutMode === "SPLIT" && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+          <div className="xl:col-span-6 space-y-3 overflow-hidden">
+            <div className="flex items-center justify-between px-2 py-1 text-xs font-mono text-slate-400">
+              <span className="font-bold text-white flex items-center space-x-1.5">
+                <LineChart className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Wireline Curves Track</span>
+              </span>
+              <span>Vertical Scale: {Math.round(zoomLevel * 100)}%</span>
+            </div>
+            {renderGraphLog()}
+          </div>
+
+          <div className="xl:col-span-6 space-y-3">
+            <div className="flex items-center justify-between px-2 py-1 text-xs font-mono text-slate-400">
+              <span className="font-bold text-white flex items-center space-x-1.5">
+                <Table className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Synchronized Tabular Sheet</span>
+              </span>
+              <span>Click a row to locate on track</span>
+            </div>
+            <WellLogDataTable
+              wellName={wellName}
+              depthUnit={depthUnit}
+              curvesData={curvesData}
+              anomalies={anomalies}
+              isCompact={true}
+              selectedDepth={selectedDepth}
+              onDepthSelect={(d) => setSelectedDepth(d)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 3. TABLE ONLY MODE */}
+      {layoutMode === "TABLE" && (
+        <WellLogDataTable
+          wellName={wellName}
+          depthUnit={depthUnit}
+          curvesData={curvesData}
+          anomalies={anomalies}
+          isCompact={false}
+          selectedDepth={selectedDepth}
+          onDepthSelect={(d) => setSelectedDepth(d)}
+        />
       )}
     </div>
   );

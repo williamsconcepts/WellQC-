@@ -1,37 +1,33 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppShell } from "@/components/layout/app-shell";
-import { ImputationBenchmarkModal } from "@/components/well-log/imputation-benchmark-modal";
-import { PaymentModal } from "@/components/pricing/payment-modal";
-import { WellLogViewer } from "@/components/well-log/log-viewer";
-import { CurveInventoryTable } from "@/components/well-log/curve-inventory-table";
+import { CleanedLogViewer } from "@/components/well-log/cleaned-log-viewer";
 import { parseLASContent, ParsedLAS } from "@/lib/las/parser";
 import { analyzeWellLogQuality, QualityAnalysisResult } from "@/lib/las/quality-engine";
-import { cleanLASLogData, CleanedLogResult, CleaningOptions } from "@/lib/las/cleaner";
-import { SAMPLE_LAS_FILES, SampleLASFile } from "@/lib/sample-las-files";
-import { WellListItem, WellDetailResponse } from "@/lib/api-types";
+import { cleanLASLogData, CleanedLogResult } from "@/lib/las/cleaner";
+import { getCorrectionOptionsForType, AnomalyOption } from "@/lib/las/anomaly-options";
+import { WellListItem } from "@/lib/api-types";
 import {
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
-  Sparkles,
-  Sliders,
-  Play,
-  RotateCcw,
-  BarChart3,
+  FileSpreadsheet,
   Download,
   Database,
   RefreshCw,
-  Eye,
-  Layers,
-  ArrowRight,
+  Sliders,
+  ChevronDown,
+  ChevronUp,
+  X,
   Check,
-  FileText,
-  Activity,
+  Info,
+  Layers,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
-// Reference baseline LAS dataset
+// Reference baseline LAS dataset for instant preview
 const sampleBenchmarkLAS: ParsedLAS = {
   version: "2.0",
   wrap: false,
@@ -54,27 +50,53 @@ const sampleBenchmarkLAS: ParsedLAS = {
   curves: [
     { mnemonic: "DEPT", unit: "FT", code: "1000", description: "DEPTH" },
     { mnemonic: "GR", unit: "GAPI", code: "2000", description: "GAMMA RAY" },
+    { mnemonic: "RT", unit: "OHMM", code: "4000", description: "DEEP RESISTIVITY" },
     { mnemonic: "DT", unit: "US/F", code: "3000", description: "SONIC TRANSIT TIME" },
-    { mnemonic: "RHOB", unit: "G/CC", code: "4000", description: "BULK DENSITY" },
-    { mnemonic: "NPHI", unit: "V/V", code: "5000", description: "NEUTRON POROSITY" },
-    { mnemonic: "CALI", unit: "IN", code: "6000", description: "CALIPER" },
-    { mnemonic: "SP", unit: "MV", code: "7000", description: "SPONTANEOUS POTENTIAL" },
+    { mnemonic: "RHOB", unit: "G/CC", code: "5000", description: "BULK DENSITY" },
+    { mnemonic: "NPHI", unit: "V/V", code: "6000", description: "NEUTRON POROSITY" },
+    { mnemonic: "CALI", unit: "IN", code: "7000", description: "CALIPER" },
   ],
   data: {
     depth: Array.from({ length: 100 }, (_, i) => 5000 + i * 0.5),
     curves: {
       DEPT: Array.from({ length: 100 }, (_, i) => 5000 + i * 0.5),
-      GR: Array.from({ length: 100 }, (_, i) => 40 + Math.sin(i * 0.2) * 35 + (i % 7 === 0 ? -999.25 : 0)),
-      DT: Array.from({ length: 100 }, (_, i) => 70 + Math.cos(i * 0.15) * 20 + (i === 22 ? 165 : 0) + (i < 8 || i % 9 === 0 ? -999.25 : 0)),
-      RHOB: Array.from({ length: 100 }, (_, i) => 2.35 + Math.sin(i * 0.1) * 0.3 + (i === 45 ? 5.8 : 0) + (i > 80 && i < 86 ? -999.25 : 0)),
-      NPHI: Array.from({ length: 100 }, (_, i) => 0.22 - Math.sin(i * 0.1) * 0.08 + (i > 80 && i < 86 ? -999.25 : 0)),
-      CALI: Array.from({ length: 100 }, (_, i) => 8.5 + (i > 80 && i < 86 ? 8.0 : 0.2 * Math.sin(i))),
-      SP: Array.from({ length: 100 }, (_, i) => -35 + Math.sin(i * 0.15) * 20 + (i > 80 && i < 86 ? -999.25 : 0)),
+      GR: Array.from({ length: 100 }, (_, i) => 40 + Math.sin(i * 0.2) * 35 + (i % 8 === 0 ? -999.25 : 0)),
+      RT: Array.from({ length: 100 }, (_, i) => Math.pow(10, 0.5 + Math.sin(i * 0.15) * 1.5) + (i === 35 ? 3500 : 0)),
+      DT: Array.from({ length: 100 }, (_, i) => 70 + Math.cos(i * 0.15) * 20 + (i === 22 ? 180 : 0) + (i < 5 ? -999.25 : 0)),
+      RHOB: Array.from({ length: 100 }, (_, i) => 2.35 + Math.sin(i * 0.1) * 0.3 + (i === 50 ? 6.2 : 0)),
+      NPHI: Array.from({ length: 100 }, (_, i) => 0.22 - Math.sin(i * 0.1) * 0.08),
+      CALI: Array.from({ length: 100 }, (_, i) => 8.5 + 0.3 * Math.sin(i * 0.3)),
     },
   },
   rawHeader: "",
   totalPoints: 100,
 };
+
+export interface AnomalyItem {
+  id: string;
+  curveMnemonic: string;
+  depthStart: number;
+  depthEnd: number;
+  anomalyType: string;
+  severity: "CRITICAL" | "WARNING" | "INFO";
+  description: string;
+  suggestedCorrection: string;
+  status: "open" | "approved" | "rejected";
+  appliedOptionId?: string;
+  appliedOptionLabel?: string;
+}
+
+interface AuditRecord {
+  timestamp: string;
+  wellName: string;
+  anomalyId: string;
+  anomalyType: string;
+  curveMnemonic: string;
+  depthRange: string;
+  action: "APPROVED" | "REJECTED" | "APPLIED";
+  optionLabel: string;
+  user: string;
+}
 
 function downloadTextFile(fileName: string, content: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
@@ -88,923 +110,1052 @@ function downloadTextFile(fileName: string, content: string, mimeType: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export default function QAEnginePage() {
-  // Active Wells selection states
-  const [dbWells, setDbWells] = useState<WellListItem[]>([]);
-  const [selectedWellKey, setSelectedWellKey] = useState<string>("benchmark-01");
-  const [isLoadingWells, setIsLoadingWells] = useState(false);
-  const [isLoadingWellData, setIsLoadingWellData] = useState(false);
+function sanitizeFileName(name: string) {
+  return name.replace(/[^a-zA-Z0-9_\-]/g, "_");
+}
 
-  // Upload workspace well (if available in localStorage)
+export default function QAEnginePage() {
+  // Available Wells state
+  const [dbWells, setDbWells] = useState<WellListItem[]>([]);
   const [uploadWorkspaceLas, setUploadWorkspaceLas] = useState<ParsedLAS | null>(null);
   const [uploadWorkspaceName, setUploadWorkspaceName] = useState<string>("");
 
-  // Current active LAS and analysis
+  // Active selected well key
+  const [selectedWellKey, setSelectedWellKey] = useState<string>("benchmark-01");
+  const [isLoadingWell, setIsLoadingWell] = useState<boolean>(false);
+
+  // Unsaved approvals confirmation modal state
+  const [pendingWellSwitchKey, setPendingWellSwitchKey] = useState<string | null>(null);
+  const [showSwitchConfirmModal, setShowSwitchConfirmModal] = useState<boolean>(false);
+
+  // Active LAS and Anomalies state
   const [activeLas, setActiveLas] = useState<ParsedLAS>(sampleBenchmarkLAS);
-  const [rawQa, setRawQa] = useState<QualityAnalysisResult>(() => analyzeWellLogQuality(sampleBenchmarkLAS));
+  const [anomalies, setAnomalies] = useState<AnomalyItem[]>([]);
 
-  // Granular correction toggles
-  const [optDuplicateDepths, setOptDuplicateDepths] = useState(true);
-  const [optDepthGaps, setOptDepthGaps] = useState(true);
-  const [optOutlierClipping, setOptOutlierClipping] = useState(true);
-  const [optDespiking, setOptDespiking] = useState(true);
-  const [optUnitStandardization, setOptUnitStandardization] = useState(true);
-  const [optFlatlineHandling, setOptFlatlineHandling] = useState(true);
-  const [imputationStrategy, setImputationStrategy] = useState<"KNN" | "LINEAR" | "MEDIAN" | "NONE">("KNN");
+  // Accordion expansion and option choices
+  const [expandedAnomalyId, setExpandedAnomalyId] = useState<string | null>(null);
+  const [selectedOptionMap, setSelectedOptionMap] = useState<Record<string, string>>({});
 
-  // Cleaning Result & View states
-  const [cleanedResult, setCleanedResult] = useState<CleanedLogResult | null>(null);
-  const [isCleaning, setIsCleaning] = useState(false);
-  const [activeLogView, setActiveLogView] = useState<"raw" | "cleaned">("cleaned");
-  const [statusNotification, setStatusNotification] = useState<string | null>(null);
-  const [isSavingCleanedWell, setIsSavingCleanedWell] = useState(false);
+  // Checkbox & Bulk Selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOptionId, setBulkOptionId] = useState<string>("");
 
-  // Modals
-  const [modalOpen, setModalOpen] = useState(false);
-  const [limitReachedModal, setLimitReachedModal] = useState(false);
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  // Cleaned LAS and Audit state
+  const [cleanedLas, setCleanedLas] = useState<ParsedLAS | null>(null);
+  const [cleanedLasText, setCleanedLasText] = useState<string>("");
+  const [hasAppliedFixes, setHasAppliedFixes] = useState<boolean>(false);
+  const [isApplyingFixes, setIsApplyingFixes] = useState<boolean>(false);
+  const [auditLog, setAuditLog] = useState<AuditRecord[]>([]);
+  const [notification, setNotification] = useState<string | null>(null);
 
-  // 1. Fetch DB wells & load Upload Workspace from localStorage on mount
+  // Helper: Build AnomalyItem array from QualityAnalysisResult
+  const buildAnomalyItems = useCallback((qa: QualityAnalysisResult): AnomalyItem[] => {
+    return qa.anomalies.map((a, idx) => ({
+      id: `anom-${idx}-${a.anomalyType}-${a.curveMnemonic}`,
+      curveMnemonic: a.curveMnemonic,
+      depthStart: a.depthStart,
+      depthEnd: a.depthEnd,
+      anomalyType: a.anomalyType,
+      severity: a.severity,
+      description: a.description,
+      suggestedCorrection: a.suggestedCorrection,
+      status: "open",
+    }));
+  }, []);
+
+  // 1. Initial Data Loading
   useEffect(() => {
-    // Check localStorage for active upload workspace
+    // Check localStorage for uploaded workspace well
     try {
       const raw = localStorage.getItem("wellqc_upload_workspace");
       if (raw) {
         const session = JSON.parse(raw);
         if (session && session.parsedLAS) {
           setUploadWorkspaceLas(session.parsedLAS);
-          setUploadWorkspaceName(session.fileName || session.parsedLAS.wellInfo.wellName || "Upload Session");
-          // Default selection to upload workspace if present
+          setUploadWorkspaceName(session.fileName || session.parsedLAS.wellInfo?.wellName || "Active Upload");
           setSelectedWellKey("upload-session");
           setActiveLas(session.parsedLAS);
-          const initialQa = session.qaResult || analyzeWellLogQuality(session.parsedLAS);
-          setRawQa(initialQa);
+          const qa = session.qaResult || analyzeWellLogQuality(session.parsedLAS);
+          setAnomalies(buildAnomalyItems(qa));
+          return;
         }
       }
     } catch (e) {
-      console.warn("Could not load upload workspace:", e);
+      console.warn("Could not read upload workspace:", e);
     }
+
+    // Default to benchmark if no upload session
+    const initialQa = analyzeWellLogQuality(sampleBenchmarkLAS);
+    setAnomalies(buildAnomalyItems(initialQa));
 
     // Fetch database wells
-    void fetchDatabaseWells();
-  }, []);
-
-  const fetchDatabaseWells = async () => {
-    setIsLoadingWells(true);
-    try {
-      const res = await fetch("/api/wells", { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setDbWells(data.wells || []);
-      }
-    } catch (e) {
-      console.warn("Failed to load DB wells", e);
-    } finally {
-      setIsLoadingWells(false);
-    }
-  };
-
-  // 2. Handle switching the active well from dropdown
-  const handleSelectWell = async (key: string) => {
-    setSelectedWellKey(key);
-    setCleanedResult(null);
-    setStatusNotification(null);
-    setActiveLogView("raw");
-
-    if (key === "upload-session") {
-      if (uploadWorkspaceLas) {
-        setActiveLas(uploadWorkspaceLas);
-        setRawQa(analyzeWellLogQuality(uploadWorkspaceLas));
-      }
-      return;
-    }
-
-    if (key === "benchmark-01") {
-      setActiveLas(sampleBenchmarkLAS);
-      setRawQa(analyzeWellLogQuality(sampleBenchmarkLAS));
-      return;
-    }
-
-    // Check sample LAS files
-    const sample = SAMPLE_LAS_FILES.find((s) => s.id === key);
-    if (sample) {
+    async function loadDbWells() {
       try {
-        const parsed = parseLASContent(sample.content);
-        setActiveLas(parsed);
-        setRawQa(analyzeWellLogQuality(parsed));
-      } catch (err) {
-        console.error("Failed to parse sample LAS:", err);
-      }
-      return;
-    }
-
-    // Check DB wells
-    if (key.startsWith("db-")) {
-      const wellId = key.replace("db-", "");
-      setIsLoadingWellData(true);
-      try {
-        const res = await fetch(`/api/wells/${wellId}`, { cache: "no-store" });
+        const res = await fetch("/api/wells", { cache: "no-store" });
         if (res.ok) {
-          const detail: WellDetailResponse = await res.json();
-          const depthArray = detail.curvesData?.depth || [];
-          const curvesList =
-            detail.curveSummaries?.map((c) => ({
-              mnemonic: c.mnemonic,
-              unit: c.unit || "",
-              code: "0",
-              description: c.standardMnemonic || c.mnemonic,
-            })) ||
-            Object.keys(detail.curvesData?.curves || {}).map((m) => ({
-              mnemonic: m,
-              unit: "",
-              code: "0",
-              description: m,
-            }));
-
-          const convertedLas: ParsedLAS = {
-            version: "2.0",
-            wrap: false,
-            wellInfo: {
-              wellName: detail.well.name,
-              company: detail.well.operatorName || "OPERATOR",
-              field: detail.well.fieldName || "FIELD",
-              location: detail.well.basin || "",
-              country: detail.well.country || "",
-              state: "",
-              apiUwi: detail.well.apiNo || detail.well.id,
-              serviceCompany: "",
-              date: detail.well.createdAt || new Date().toISOString(),
-              startDepth: depthArray[0] || 0,
-              stopDepth: depthArray[depthArray.length - 1] || detail.well.tdFt || 0,
-              step: depthArray.length > 1 ? Math.abs(depthArray[1] - depthArray[0]) : 0.5,
-              nullValue: -999.25,
-              depthUnit: detail.well.depthUnit || "FT",
-            },
-            curves: curvesList,
-            data: {
-              depth: depthArray,
-              curves: detail.curvesData?.curves || {},
-            },
-            rawHeader: "",
-            totalPoints: depthArray.length,
-          };
-
-          setActiveLas(convertedLas);
-          setRawQa(analyzeWellLogQuality(convertedLas));
+          const data = await res.json();
+          setDbWells(data.wells || []);
         }
-      } catch (e) {
-        console.error("Failed to fetch well details:", e);
+      } catch (err) {
+        console.warn("Failed to load database wells:", err);
+      }
+    }
+    void loadDbWells();
+  }, [buildAnomalyItems]);
+
+  // Derived current well name
+  const currentWellName = useMemo(() => {
+    if (selectedWellKey === "upload-session") {
+      return uploadWorkspaceName || activeLas.wellInfo.wellName || "Upload Session";
+    }
+    if (selectedWellKey === "benchmark-01") {
+      return "BENCHMARK-WELL-01";
+    }
+    const found = dbWells.find((w) => w.id === selectedWellKey);
+    return found?.name || activeLas.wellInfo.wellName || "Selected Well";
+  }, [selectedWellKey, uploadWorkspaceName, activeLas, dbWells]);
+
+  // 2. Pure Derived Stat Cards
+  // Total = anomalies.length, Critical/Warning = count by severity, Approved = count where status === 'approved'
+  const statTotal = anomalies.length;
+  const statCritical = anomalies.filter((a) => a.severity === "CRITICAL").length;
+  const statWarning = anomalies.filter((a) => a.severity === "WARNING").length;
+  const statApproved = anomalies.filter((a) => a.status === "approved").length;
+
+  // 3. Well Selector & Switching with Confirmation
+  const switchWellData = useCallback(
+    async (targetKey: string) => {
+      setIsLoadingWell(true);
+      setSelectedWellKey(targetKey);
+      setSelectedIds(new Set());
+      setExpandedAnomalyId(null);
+      setSelectedOptionMap({});
+      setCleanedLas(null);
+      setCleanedLasText("");
+      setHasAppliedFixes(false);
+
+      try {
+        if (targetKey === "upload-session" && uploadWorkspaceLas) {
+          setActiveLas(uploadWorkspaceLas);
+          const qa = analyzeWellLogQuality(uploadWorkspaceLas);
+          setAnomalies(buildAnomalyItems(qa));
+        } else if (targetKey === "benchmark-01") {
+          setActiveLas(sampleBenchmarkLAS);
+          const qa = analyzeWellLogQuality(sampleBenchmarkLAS);
+          setAnomalies(buildAnomalyItems(qa));
+        } else {
+          // Fetch database well detail
+          const res = await fetch(`/api/wells/${targetKey}`, { cache: "no-store" });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.curvesData) {
+              const loadedLas: ParsedLAS = {
+                version: "2.0",
+                wrap: false,
+                wellInfo: {
+                  wellName: data.well.name,
+                  company: data.well.operatorName,
+                  field: data.well.fieldName,
+                  location: data.well.basin,
+                  country: data.well.country,
+                  state: "",
+                  apiUwi: data.well.apiNo,
+                  serviceCompany: data.well.operatorName,
+                  date: new Date().toISOString().split("T")[0],
+                  startDepth: data.curvesData.depth[0] || 5000,
+                  stopDepth: data.curvesData.depth[data.curvesData.depth.length - 1] || 6000,
+                  step: 0.5,
+                  nullValue: -999.25,
+                  depthUnit: data.well.depthUnit || "FT",
+                },
+                curves: Object.keys(data.curvesData.curves).map((mnem) => ({
+                  mnemonic: mnem,
+                  unit: "",
+                  code: "",
+                  description: mnem,
+                })),
+                data: data.curvesData,
+                rawHeader: "",
+                totalPoints: data.curvesData.depth.length,
+              };
+              setActiveLas(loadedLas);
+              const qa = analyzeWellLogQuality(loadedLas);
+              setAnomalies(buildAnomalyItems(qa));
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to switch well:", err);
       } finally {
-        setIsLoadingWellData(false);
+        setIsLoadingWell(false);
       }
+    },
+    [uploadWorkspaceLas, buildAnomalyItems],
+  );
+
+  const handleWellChangeRequest = (newKey: string) => {
+    if (newKey === selectedWellKey) return;
+
+    // Check if there are unsaved approvals on current well
+    const hasUnsavedApprovals = anomalies.some((a) => a.status === "approved") && !hasAppliedFixes;
+    if (hasUnsavedApprovals) {
+      setPendingWellSwitchKey(newKey);
+      setShowSwitchConfirmModal(true);
+      return;
     }
+
+    void switchWellData(newKey);
   };
 
-  // 3. Check freemium limits before running heavy operations
-  const checkLimit = async () => {
-    try {
-      const res = await fetch("/api/las/check", { method: "POST" });
-      const data = await res.json();
-      if (res.status === 402 || data.limitReached) {
-        setLimitReachedModal(true);
-        return false;
-      }
-      return true;
-    } catch {
-      return true;
+  const confirmDiscardAndSwitch = () => {
+    if (pendingWellSwitchKey) {
+      void switchWellData(pendingWellSwitchKey);
     }
+    setPendingWellSwitchKey(null);
+    setShowSwitchConfirmModal(false);
   };
 
-  // 4. Execute Selected Anomaly Corrections
-  const handleExecuteCorrections = async () => {
-    const allowed = await checkLimit();
-    if (!allowed) return;
-
-    setIsCleaning(true);
-    try {
-      const options: CleaningOptions = {
-        duplicateDepthPruning: optDuplicateDepths,
-        depthGapInterpolation: optDepthGaps,
-        outlierClipping: optOutlierClipping,
-        despiking: optDespiking,
-        unitStandardization: optUnitStandardization,
-        flatlineHandling: optFlatlineHandling,
-        imputationStrategy,
-      };
-
-      const result = cleanLASLogData(activeLas, rawQa, options);
-      setCleanedResult(result);
-      setActiveLogView("cleaned");
-      setStatusNotification(
-        `Cleaning complete! Quality Score increased by +${result.verificationReport.scoreImprovement}% (from ${result.verificationReport.originalQualityScore}% [${result.verificationReport.originalGrade}] to ${result.verificationReport.cleanedQualityScore}% [${result.verificationReport.cleanedGrade}]).`
-      );
-    } catch (err) {
-      console.error("Error executing corrections:", err);
-      setStatusNotification("Error executing cleaning algorithms. Please check console.");
-    } finally {
-      setIsCleaning(false);
+  // 4. Anomaly Row In-Place Accordion & Approve Fix
+  const handleToggleApproveAccordion = (anomaly: AnomalyItem) => {
+    if (expandedAnomalyId === anomaly.id) {
+      setExpandedAnomalyId(null);
+      return;
     }
+
+    // Pre-select recommended option if none chosen yet
+    const options = getCorrectionOptionsForType(anomaly.anomalyType);
+    const recommended = options.find((o) => o.recommended) || options[0];
+    if (!selectedOptionMap[anomaly.id] && recommended) {
+      setSelectedOptionMap((prev) => ({ ...prev, [anomaly.id]: recommended.id }));
+    }
+
+    setExpandedAnomalyId(anomaly.id);
   };
 
-  // 5. Download Cleaned File (LAS 2.0 or CSV)
-  const handleDownloadCleaned = (format: "las" | "csv") => {
-    if (!cleanedResult) return;
-    const wellStem = activeLas.wellInfo.wellName.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+  const handleConfirmApprove = (anomaly: AnomalyItem) => {
+    const options = getCorrectionOptionsForType(anomaly.anomalyType);
+    const chosenOptionId = selectedOptionMap[anomaly.id] || options.find((o) => o.recommended)?.id || options[0]?.id;
+    const chosenOption = options.find((o) => o.id === chosenOptionId) || options[0];
 
-    if (format === "las") {
-      downloadTextFile(
-        `${wellStem}_cleaned_verified.las`,
-        cleanedResult.cleanedLasText,
-        "application/octet-stream;charset=utf-8"
-      );
+    setAnomalies((prev) =>
+      prev.map((item) =>
+        item.id === anomaly.id
+          ? {
+              ...item,
+              status: "approved",
+              appliedOptionId: chosenOption.id,
+              appliedOptionLabel: chosenOption.label,
+            }
+          : item,
+      ),
+    );
+
+    // Record in local audit record
+    setAuditLog((prev) => [
+      ...prev,
+      {
+        timestamp: new Date().toISOString(),
+        wellName: currentWellName,
+        anomalyId: anomaly.id,
+        anomalyType: anomaly.anomalyType,
+        curveMnemonic: anomaly.curveMnemonic,
+        depthRange: `${anomaly.depthStart.toFixed(1)} - ${anomaly.depthEnd.toFixed(1)}`,
+        action: "APPROVED",
+        optionLabel: chosenOption.label,
+        user: "Petrophysicist",
+      },
+    ]);
+
+    setExpandedAnomalyId(null);
+  };
+
+  // 5. Clicking "Reject"
+  const handleReject = (anomaly: AnomalyItem) => {
+    setAnomalies((prev) =>
+      prev.map((item) =>
+        item.id === anomaly.id
+          ? {
+              ...item,
+              status: "rejected",
+              appliedOptionId: undefined,
+              appliedOptionLabel: undefined,
+            }
+          : item,
+      ),
+    );
+
+    if (expandedAnomalyId === anomaly.id) {
+      setExpandedAnomalyId(null);
+    }
+
+    // Remove from selection if it was selected
+    if (selectedIds.has(anomaly.id)) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(anomaly.id);
+        return next;
+      });
+    }
+
+    setAuditLog((prev) => [
+      ...prev,
+      {
+        timestamp: new Date().toISOString(),
+        wellName: currentWellName,
+        anomalyId: anomaly.id,
+        anomalyType: anomaly.anomalyType,
+        curveMnemonic: anomaly.curveMnemonic,
+        depthRange: `${anomaly.depthStart.toFixed(1)} - ${anomaly.depthEnd.toFixed(1)}`,
+        action: "REJECTED",
+        optionLabel: "Ignored by user (Leave untouched)",
+        user: "Petrophysicist",
+      },
+    ]);
+  };
+
+  // 6. Checkbox + Bulk Select with Type-Matching Rule
+  const firstSelectedId = useMemo(() => {
+    if (selectedIds.size === 0) return null;
+    return Array.from(selectedIds)[0];
+  }, [selectedIds]);
+
+  const firstSelectedAnomaly = useMemo(() => {
+    if (!firstSelectedId) return null;
+    return anomalies.find((a) => a.id === firstSelectedId) || null;
+  }, [firstSelectedId, anomalies]);
+
+  const firstSelectedType = useMemo(() => {
+    return firstSelectedAnomaly?.anomalyType || null;
+  }, [firstSelectedAnomaly]);
+
+  // Options for the active bulk type
+  const bulkOptions = useMemo(() => {
+    if (!firstSelectedType) return [];
+    return getCorrectionOptionsForType(firstSelectedType);
+  }, [firstSelectedType]);
+
+  // Set default bulk option when a type is first selected
+  useEffect(() => {
+    if (bulkOptions.length > 0) {
+      const rec = bulkOptions.find((o) => o.recommended) || bulkOptions[0];
+      setBulkOptionId(rec.id);
     } else {
-      downloadTextFile(
-        `${wellStem}_cleaned_dataset.csv`,
-        cleanedResult.cleanedCsvText,
-        "text/csv;charset=utf-8"
-      );
+      setBulkOptionId("");
     }
+  }, [bulkOptions]);
+
+  const handleToggleCheckbox = (anomaly: AnomalyItem) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(anomaly.id)) {
+        next.delete(anomaly.id);
+      } else {
+        // Enforce type-matching: only allow if matches firstSelectedType or first selection
+        if (next.size === 0 || anomaly.anomalyType === firstSelectedType) {
+          next.add(anomaly.id);
+        }
+      }
+      return next;
+    });
   };
 
-  // 6. Save Cleaned Well to Database
-  const handleSaveCleanedWell = async () => {
-    if (!cleanedResult) return;
-    setIsSavingCleanedWell(true);
+  const handleApplyBulk = () => {
+    if (selectedIds.size === 0 || !firstSelectedType) return;
+    const chosenOption = bulkOptions.find((o) => o.id === bulkOptionId) || bulkOptions[0];
+    if (!chosenOption) return;
+
+    setAnomalies((prev) =>
+      prev.map((item) => {
+        if (selectedIds.has(item.id)) {
+          return {
+            ...item,
+            status: "approved",
+            appliedOptionId: chosenOption.id,
+            appliedOptionLabel: chosenOption.label,
+          };
+        }
+        return item;
+      }),
+    );
+
+    // Record bulk audit items
+    const timestamp = new Date().toISOString();
+    const newRecords: AuditRecord[] = Array.from(selectedIds).map((id) => {
+      const anom = anomalies.find((a) => a.id === id);
+      return {
+        timestamp,
+        wellName: currentWellName,
+        anomalyId: id,
+        anomalyType: anom?.anomalyType || firstSelectedType,
+        curveMnemonic: anom?.curveMnemonic || "-",
+        depthRange: anom ? `${anom.depthStart.toFixed(1)} - ${anom.depthEnd.toFixed(1)}` : "-",
+        action: "APPROVED",
+        optionLabel: chosenOption.label,
+        user: "Petrophysicist (Bulk Action)",
+      };
+    });
+    setAuditLog((prev) => [...prev, ...newRecords]);
+
+    setSelectedIds(new Set());
+  };
+
+  // 7. "Apply Approved Fixes" (Top Button)
+  const handleApplyApprovedFixes = async () => {
+    const approvedItems = anomalies.filter((a) => a.status === "approved");
+    if (approvedItems.length === 0) {
+      setNotification("No approved fixes to apply. Click 'Approve fix' on anomalies first.");
+      setTimeout(() => setNotification(null), 4000);
+      return;
+    }
+
+    setIsApplyingFixes(true);
+    setNotification(null);
+
     try {
-      const wellStem = activeLas.wellInfo.wellName;
-      const response = await fetch("/api/las", {
+      const payloadFixes = approvedItems.map((a) => {
+        const options = getCorrectionOptionsForType(a.anomalyType);
+        const opt = options.find((o) => o.id === a.appliedOptionId) || options[0];
+        return {
+          anomalyId: a.id,
+          anomalyType: a.anomalyType,
+          curveMnemonic: a.curveMnemonic,
+          depthStart: a.depthStart,
+          depthEnd: a.depthEnd,
+          optionId: opt.id,
+          optionLabel: opt.label,
+          description: a.description,
+        };
+      });
+
+      // Send to backend API to persist individual audit logs
+      const res = await fetch("/api/las/apply-fixes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileName: `${wellStem}_CLEANED.las`,
-          content: cleanedResult.cleanedLasText,
+          wellId: selectedWellKey,
+          approvedFixes: payloadFixes,
+          rawLas: activeLas,
         }),
       });
 
-      if (response.ok) {
-        setStatusNotification(`Cleaned log saved successfully as '${wellStem}_CLEANED' in Well Management!`);
-        void fetchDatabaseWells();
-      } else {
-        const data = await response.json();
-        setStatusNotification(data.error || "Failed to commit cleaned log to database.");
+      const data = await res.json();
+
+      // Run local cleaning engine to obtain verified cleaned LAS
+      const approvedTypes = new Set(approvedItems.map((a) => a.anomalyType.toUpperCase()));
+      const cleaningResult: CleanedLogResult = cleanLASLogData(activeLas, undefined, {
+        duplicateDepthPruning: approvedTypes.has("DUPLICATE_DEPTH"),
+        depthGapInterpolation: approvedTypes.has("DEPTH_GAP"),
+        despiking: approvedTypes.has("EXTREME_SPIKE"),
+        outlierClipping: approvedTypes.has("OUTLIER_VALUE") || approvedTypes.has("IMPOSSIBLE_VALUE"),
+        flatlineHandling: approvedTypes.has("FLATLINE"),
+        unitStandardization: approvedTypes.has("UNIT_MISMATCH") || approvedTypes.has("NON_STANDARD_MNEMONIC"),
+        imputationStrategy: approvedTypes.has("NULL_CLUSTER") ? "KNN" : "NONE",
+      });
+
+      const finalCleanedLas = data.cleanedLas || cleaningResult.cleanedLas;
+      const finalCleanedLasText = data.cleanedLasText || cleaningResult.cleanedLasText;
+
+      setCleanedLas(finalCleanedLas);
+      setCleanedLasText(finalCleanedLasText);
+      setHasAppliedFixes(true);
+
+      // Save to localStorage so reports page can download cleaned LAS
+      try {
+        localStorage.setItem(`wellqc_cleaned_las_${selectedWellKey}`, finalCleanedLasText);
+        localStorage.setItem(
+          "wellqc_latest_cleaned_las",
+          JSON.stringify({
+            wellId: selectedWellKey,
+            wellName: currentWellName,
+            cleanedLasText: finalCleanedLasText,
+            cleanedAt: new Date().toISOString(),
+          }),
+        );
+      } catch (e) {
+        console.warn("Could not cache cleaned LAS text:", e);
       }
+
+      // Record applied entries in audit log
+      const timestamp = new Date().toISOString();
+      const appliedAuditEntries: AuditRecord[] = payloadFixes.map((f) => ({
+        timestamp,
+        wellName: currentWellName,
+        anomalyId: f.anomalyId,
+        anomalyType: f.anomalyType,
+        curveMnemonic: f.curveMnemonic,
+        depthRange: `${f.depthStart.toFixed(1)} - ${f.depthEnd.toFixed(1)}`,
+        action: "APPLIED",
+        optionLabel: f.optionLabel,
+        user: "Petrophysicist",
+      }));
+      setAuditLog((prev) => [...prev, ...appliedAuditEntries]);
+
+      setNotification(`✓ Successfully applied ${approvedItems.length} approved fixes. Cleaned LAS is ready!`);
+      setTimeout(() => setNotification(null), 5000);
     } catch (err) {
-      console.error("Failed to commit cleaned log:", err);
-      setStatusNotification("Network error saving cleaned log.");
+      console.error("Error applying fixes:", err);
+      setNotification("Failed to apply approved fixes. Please try again.");
+      setTimeout(() => setNotification(null), 5000);
     } finally {
-      setIsSavingCleanedWell(false);
+      setIsApplyingFixes(false);
     }
   };
 
-  const handleApplyImputation = (updated: ParsedLAS, strategy: string, curve: string) => {
-    setActiveLas(updated);
-    setRawQa(analyzeWellLogQuality(updated));
-    setStatusNotification(`Applied ${strategy} imputation on curve ${curve}. Log updated.`);
+  // 8. "Export Audit Log"
+  const handleExportAuditLog = () => {
+    const csvHeader = [
+      "Timestamp",
+      "Well Name",
+      "Anomaly ID",
+      "Anomaly Type",
+      "Curve Mnemonic",
+      "Depth Range",
+      "Action",
+      "Option Applied",
+      "User",
+    ].join(",");
+
+    const rows = auditLog.map((log) =>
+      [
+        `"${log.timestamp}"`,
+        `"${log.wellName}"`,
+        `"${log.anomalyId}"`,
+        `"${log.anomalyType}"`,
+        `"${log.curveMnemonic}"`,
+        `"${log.depthRange}"`,
+        `"${log.action}"`,
+        `"${log.optionLabel.replace(/"/g, '""')}"`,
+        `"${log.user}"`,
+      ].join(","),
+    );
+
+    // If auditLog empty, export current snapshot
+    if (rows.length === 0) {
+      anomalies.forEach((a) => {
+        rows.push(
+          [
+            `"${new Date().toISOString()}"`,
+            `"${currentWellName}"`,
+            `"${a.id}"`,
+            `"${a.anomalyType}"`,
+            `"${a.curveMnemonic}"`,
+            `"${a.depthStart.toFixed(1)} - ${a.depthEnd.toFixed(1)}"`,
+            `"${a.status.toUpperCase()}"`,
+            `"${(a.appliedOptionLabel || "None").replace(/"/g, '""')}"`,
+            `"Petrophysicist"`,
+          ].join(","),
+        );
+      });
+    }
+
+    const csvContent = `${csvHeader}\n${rows.join("\n")}\n`;
+    downloadTextFile(
+      `${sanitizeFileName(currentWellName)}_Quality_Audit_Log.csv`,
+      csvContent,
+      "text/csv;charset=utf-8",
+    );
   };
 
-  // Count flagged items for each category on active raw log
-  const cntDuplicateDepths = rawQa.anomalies.filter((a) => a.anomalyType === "DUPLICATE_DEPTH").length;
-  const cntDepthGaps = rawQa.anomalies.filter((a) => a.anomalyType === "DEPTH_GAP").length;
-  const cntNullClusters = rawQa.anomalies.filter((a) => a.anomalyType === "NULL_CLUSTER").length;
-  const cntImpossible = rawQa.anomalies.filter((a) => a.anomalyType === "IMPOSSIBLE_VALUE").length;
-  const cntOutliers = rawQa.anomalies.filter((a) => a.anomalyType === "OUTLIER_VALUE").length;
-  const cntSpikes = rawQa.anomalies.filter((a) => a.anomalyType === "EXTREME_SPIKE").length;
-  const cntFlatlines = rawQa.anomalies.filter((a) => a.anomalyType === "FLATLINE").length;
-  const cntUnitMismatches = rawQa.anomalies.filter((a) => a.anomalyType === "UNIT_MISMATCH").length;
+  // 9. "Download Cleaned LAS"
+  const handleDownloadCleanedLAS = () => {
+    if (!cleanedLasText) {
+      setNotification("Please click 'Apply approved fixes' first to generate the cleaned LAS file.");
+      setTimeout(() => setNotification(null), 4000);
+      return;
+    }
+
+    downloadTextFile(
+      `${sanitizeFileName(currentWellName)}_cleaned.las`,
+      cleanedLasText,
+      "application/octet-stream;charset=utf-8",
+    );
+  };
 
   return (
     <AppShell>
       <div className="space-y-6">
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-wellqc-panel/60 border border-wellqc-border p-5 rounded-2xl">
+        {/* Status Notification Banner */}
+        {notification && (
+          <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 rounded-xl font-mono text-xs flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center space-x-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span>{notification}</span>
+            </div>
+            <button onClick={() => setNotification(null)} className="text-emerald-400 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* 2. Header Row: Title + Action Buttons */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-wellqc-panel border border-wellqc-border p-5 rounded-2xl shadow-xl">
           <div>
             <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                Quality Engine — Data Correction &amp; Repair Stage
+              <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                Petrophysical Quality Engine
               </span>
             </div>
-            <h1 className="text-2xl font-black text-white tracking-tight mt-1">
-              Log Data Cleaning &amp; Anomaly Correction Engine
+            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight mt-1 flex items-center space-x-3">
+              <span>Quality Engine</span>
+              <ShieldCheck className="w-6 h-6 text-cyan-400 inline" />
             </h1>
             <p className="text-xs text-wellqc-muted font-mono mt-0.5">
-              Select active well, configure targeted petrophysical repair algorithms, verify before/after scores, and export cleaned datasets.
+              Review algorithmic anomalies, approve petrophysical fixes with full audit transparency, and inspect cleaned curves.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Top Header Buttons: Apply Approved Fixes, Export Audit Log, Download Cleaned LAS */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Apply Approved Fixes */}
             <button
-              onClick={() => setModalOpen(true)}
-              className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-wellqc-card border border-wellqc-border text-cyan-300 hover:text-white font-bold text-xs shadow-sm hover:border-cyan-500/40 transition-all font-mono cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              <span>Imputation Benchmark</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Active Well Selection Dropdown Bar */}
-        <div className="bg-wellqc-card/80 border border-wellqc-border p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
-              <Database className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <label htmlFor="active-well-select" className="text-[11px] font-mono font-bold text-slate-300 block mb-1">
-                SELECT ACTIVE WELL FOR CLEANING:
-              </label>
-              <div className="flex items-center space-x-2">
-                <select
-                  id="active-well-select"
-                  value={selectedWellKey}
-                  onChange={(e) => void handleSelectWell(e.target.value)}
-                  className="w-full max-w-md bg-slate-900 border border-wellqc-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-500 transition-colors"
-                >
-                  {uploadWorkspaceLas && (
-                    <optgroup label="Current Upload Session">
-                      <option value="upload-session">
-                        📍 {uploadWorkspaceName} ({uploadWorkspaceLas.curves.length} curves, {uploadWorkspaceLas.totalPoints} pts)
-                      </option>
-                    </optgroup>
-                  )}
-
-                  {dbWells.length > 0 && (
-                    <optgroup label="Committed Wells (Well Management)">
-                      {dbWells.map((w) => (
-                        <option key={w.id} value={`db-${w.id}`}>
-                          🛢️ {w.name} — {w.fieldName || w.basin || "Offshore"} ({w.qualityScore}% {w.qualityGrade})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-
-                  <optgroup label="Preset Benchmark Wells">
-                    <option value="benchmark-01">
-                      🔬 BENCHMARK-WELL-01 (Synthetic Washouts &amp; Sonic Cycle Skips)
-                    </option>
-                    {SAMPLE_LAS_FILES.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        📄 {s.name} ({s.field} — {s.operator})
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() => void fetchDatabaseWells()}
-                  disabled={isLoadingWells}
-                  title="Refresh Wells List"
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLoadingWells ? "animate-spin text-cyan-400" : ""}`} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Active Well Status Badges */}
-          <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-            <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
-              <span className="text-slate-500 text-[10px] block">DEPTH INTERVAL</span>
-              <span className="font-bold text-white">
-                {activeLas.wellInfo.startDepth.toFixed(1)} – {activeLas.wellInfo.stopDepth.toFixed(1)} {activeLas.wellInfo.depthUnit}
-              </span>
-            </div>
-            <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
-              <span className="text-slate-500 text-[10px] block">CURVE CHANNELS</span>
-              <span className="font-bold text-cyan-300">{activeLas.curves.length} Channels</span>
-            </div>
-            <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-slate-500 text-[10px] block">INITIAL RAW GRADE</span>
-              <span className={`font-bold ${
-                rawQa.overallScore >= 80 ? "text-emerald-400" :
-                rawQa.overallScore >= 60 ? "text-cyan-400" :
-                rawQa.overallScore >= 40 ? "text-amber-400" : "text-rose-400"
-              }`}>
-                {rawQa.overallScore}% ({rawQa.qualityGrade})
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Status Notification Banner */}
-        {statusNotification && (
-          <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-300 font-mono text-xs flex items-center justify-between animate-in fade-in">
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{statusNotification}</span>
-            </div>
-            <button
-              onClick={() => setStatusNotification(null)}
-              className="text-xs text-slate-400 hover:text-white px-2 py-0.5"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Granular Anomaly Correction Controls */}
-        <div className="bg-wellqc-panel border border-wellqc-border p-6 rounded-2xl space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-wellqc-border pb-4">
-            <div>
-              <h2 className="text-base font-bold text-white flex items-center space-x-2 font-mono">
-                <Sliders className="w-5 h-5 text-emerald-400" />
-                <span>Selectable Anomaly Correction Controls</span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Toggle the specific repair algorithms to execute on the active well log.
-              </p>
-            </div>
-            <div className="flex items-center space-x-2 text-xs font-mono">
-              <button
-                type="button"
-                onClick={() => {
-                  setOptDuplicateDepths(true);
-                  setOptDepthGaps(true);
-                  setOptOutlierClipping(true);
-                  setOptDespiking(true);
-                  setOptUnitStandardization(true);
-                  setOptFlatlineHandling(true);
-                  setImputationStrategy("KNN");
-                }}
-                className="text-cyan-400 hover:text-cyan-300 underline"
-              >
-                Select All
-              </button>
-              <span className="text-slate-600">|</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setOptDuplicateDepths(false);
-                  setOptDepthGaps(false);
-                  setOptOutlierClipping(false);
-                  setOptDespiking(false);
-                  setOptUnitStandardization(false);
-                  setOptFlatlineHandling(false);
-                  setImputationStrategy("NONE");
-                }}
-                className="text-slate-400 hover:text-slate-300 underline"
-              >
-                Clear All
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* 1. Remove Duplicate Depths */}
-            <div
-              onClick={() => setOptDuplicateDepths(!optDuplicateDepths)}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                optDuplicateDepths
-                  ? "bg-emerald-500/10 border-emerald-500/40 shadow-sm"
-                  : "bg-wellqc-card border-wellqc-border opacity-70"
+              onClick={handleApplyApprovedFixes}
+              disabled={isApplyingFixes || statApproved === 0}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-mono text-xs font-bold transition-all shadow-lg ${
+                statApproved > 0
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 shadow-emerald-500/20 hover:scale-[1.02]"
+                  : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
               }`}
+              title={statApproved > 0 ? "Apply all approved corrections to this well log" : "Approve at least one fix to apply"}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-2 font-mono font-bold text-xs text-white">
-                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${optDuplicateDepths ? "bg-emerald-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                    {optDuplicateDepths ? "✓" : ""}
-                  </span>
-                  <span>Remove Duplicate Depths</span>
-                </div>
-                {cntDuplicateDepths > 0 && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
-                    {cntDuplicateDepths} Flagged
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 font-sans leading-relaxed">
-                Purges duplicate index rows and guarantees strict monotonic depth progression.
-              </p>
-            </div>
-
-            {/* 2. Handle Depth Gaps */}
-            <div
-              onClick={() => setOptDepthGaps(!optDepthGaps)}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                optDepthGaps
-                  ? "bg-emerald-500/10 border-emerald-500/40 shadow-sm"
-                  : "bg-wellqc-card border-wellqc-border opacity-70"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-2 font-mono font-bold text-xs text-white">
-                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${optDepthGaps ? "bg-emerald-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                    {optDepthGaps ? "✓" : ""}
-                  </span>
-                  <span>Handle Depth Gaps</span>
-                </div>
-                {cntDepthGaps > 0 && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                    {cntDepthGaps} Gaps
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 font-sans leading-relaxed">
-                Identifies telemetry skips (&gt;3x step) and aligns depth intervals for interpretation.
-              </p>
-            </div>
-
-            {/* 3. Missing Value Imputation */}
-            <div className="p-4 rounded-xl border bg-wellqc-card border-wellqc-border space-y-2">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-2 font-mono font-bold text-xs text-white">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <span>Missing Value Imputation</span>
-                </div>
-                {cntNullClusters > 0 && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                    {cntNullClusters} Clusters
-                  </span>
-                )}
-              </div>
-              <div className="pt-1">
-                <select
-                  value={imputationStrategy}
-                  onChange={(e) => setImputationStrategy(e.target.value as any)}
-                  className="w-full bg-slate-900 border border-wellqc-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-cyan-300 font-bold focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="KNN">KNN Multi-Well Regression (5-NN)</option>
-                  <option value="LINEAR">Linear Depth Interpolation</option>
-                  <option value="MEDIAN">Windowed Median Fill</option>
-                  <option value="NONE">Do Not Impute (Keep Nulls)</option>
-                </select>
-              </div>
-              <p className="text-[10px] text-slate-400 font-sans">
-                Evidence-based ML repair for borehole washouts and missing telemetry intervals.
-              </p>
-            </div>
-
-            {/* 4. Correct Unit Conversions */}
-            <div
-              onClick={() => setOptUnitStandardization(!optUnitStandardization)}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                optUnitStandardization
-                  ? "bg-emerald-500/10 border-emerald-500/40 shadow-sm"
-                  : "bg-wellqc-card border-wellqc-border opacity-70"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-2 font-mono font-bold text-xs text-white">
-                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${optUnitStandardization ? "bg-emerald-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                    {optUnitStandardization ? "✓" : ""}
-                  </span>
-                  <span>Correct Unit Conversions</span>
-                </div>
-                {cntUnitMismatches > 0 && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
-                    {cntUnitMismatches} Mismatched
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 font-sans leading-relaxed">
-                Standardizes units (e.g. m &rarr; ft, API &rarr; GAPI, decimal &rarr; percentage).
-              </p>
-            </div>
-
-            {/* 5. Clip Physically Impossible Values */}
-            <div
-              onClick={() => setOptOutlierClipping(!optOutlierClipping)}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                optOutlierClipping
-                  ? "bg-emerald-500/10 border-emerald-500/40 shadow-sm"
-                  : "bg-wellqc-card border-wellqc-border opacity-70"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-2 font-mono font-bold text-xs text-white">
-                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${optOutlierClipping ? "bg-emerald-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                    {optOutlierClipping ? "✓" : ""}
-                  </span>
-                  <span>Clip Physically Impossible Values</span>
-                </div>
-                {(cntImpossible > 0 || cntOutliers > 0) && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
-                    {cntImpossible + cntOutliers} Outliers
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 font-sans leading-relaxed">
-                Clips RHOB outside 1.0–3.2 g/cc, negative NPHI, and unphysical electrical readings.
-              </p>
-            </div>
-
-            {/* 6. Despike DT (Acoustic Sonic Channels) */}
-            <div
-              onClick={() => setOptDespiking(!optDespiking)}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                optDespiking
-                  ? "bg-emerald-500/10 border-emerald-500/40 shadow-sm"
-                  : "bg-wellqc-card border-wellqc-border opacity-70"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-2 font-mono font-bold text-xs text-white">
-                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${optDespiking ? "bg-emerald-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                    {optDespiking ? "✓" : ""}
-                  </span>
-                  <span>Despike DT &amp; Sonic Logs</span>
-                </div>
-                {cntSpikes > 0 && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
-                    {cntSpikes} Spikes
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 font-sans leading-relaxed">
-                Eliminates acoustic cycle skips and electrical noise using a 5-point median window.
-              </p>
-            </div>
-
-            {/* 7. Handle Flatlines / Stuck Sensor */}
-            <div
-              onClick={() => setOptFlatlineHandling(!optFlatlineHandling)}
-              className={`p-4 rounded-xl border transition-all cursor-pointer select-none ${
-                optFlatlineHandling
-                  ? "bg-emerald-500/10 border-emerald-500/40 shadow-sm"
-                  : "bg-wellqc-card border-wellqc-border opacity-70"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-2 font-mono font-bold text-xs text-white">
-                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${optFlatlineHandling ? "bg-emerald-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                    {optFlatlineHandling ? "✓" : ""}
-                  </span>
-                  <span>Handle Flatlines / Stuck Sensors</span>
-                </div>
-                {cntFlatlines > 0 && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                    {cntFlatlines} Flatlines
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 font-sans leading-relaxed">
-                Detects stuck sensor intervals (&gt;25 identical steps) and nullifies for safe analysis.
-              </p>
-            </div>
-          </div>
-
-          {/* Primary Action Button */}
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs text-slate-400 font-mono">
-              Ready to process <strong className="text-white">{activeLas.curves.length} curves</strong> over{" "}
-              <strong className="text-white">{activeLas.totalPoints} depth samples</strong>.
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleExecuteCorrections()}
-              disabled={isCleaning}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-xs font-mono uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center space-x-2"
-            >
-              {isCleaning ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Executing Data Cleaning Engine...</span>
-                </>
+              {isApplyingFixes ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Execute Selected Anomaly Corrections</span>
-                </>
+                <CheckCircle2 className="w-4 h-4" />
               )}
+              <span>Apply approved fixes ({statApproved})</span>
+            </button>
+
+            {/* Export Audit Log */}
+            <button
+              onClick={handleExportAuditLog}
+              className="flex items-center space-x-2 px-3.5 py-2.5 rounded-xl font-mono text-xs font-bold bg-wellqc-card hover:bg-wellqc-card/80 text-cyan-300 border border-cyan-500/40 hover:border-cyan-400 shadow-md transition-all hover:scale-[1.01]"
+              title="Download full audit log of all approve/reject/apply actions"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
+              <span>Export audit log</span>
+            </button>
+
+            {/* Download Cleaned LAS */}
+            <button
+              onClick={handleDownloadCleanedLAS}
+              disabled={!hasAppliedFixes}
+              className={`flex items-center space-x-2 px-3.5 py-2.5 rounded-xl font-mono text-xs font-bold transition-all shadow-md ${
+                hasAppliedFixes
+                  ? "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-500/20 hover:scale-[1.01]"
+                  : "bg-slate-800/80 text-slate-500 border border-slate-700/60 cursor-not-allowed"
+              }`}
+              title={
+                hasAppliedFixes
+                  ? "Download cleaned LAS file with applied fixes"
+                  : "Click 'Apply approved fixes' first to enable download"
+              }
+            >
+              <Download className="w-4 h-4" />
+              <span>Download cleaned LAS</span>
             </button>
           </div>
         </div>
 
-        {/* Cleaning Verification & Improvement Report Banner */}
-        {cleanedResult && (
-          <div className="bg-gradient-to-br from-slate-900 via-emerald-950/30 to-slate-900 border border-emerald-500/40 p-6 rounded-2xl space-y-5 animate-in fade-in zoom-in duration-300">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-500/20">
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                  <h3 className="text-lg font-black text-white font-mono">
-                    Quality Engine Verification &amp; Improvement Summary
-                  </h3>
-                </div>
-                <p className="text-xs text-emerald-200/80 font-mono">
-                  {cleanedResult.verificationReport.summaryMessage}
-                </p>
-              </div>
+        {/* 3. Active Well Dropdown */}
+        <div className="bg-wellqc-card border border-wellqc-border p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3 text-xs font-mono w-full">
+            <span className="text-slate-400 font-bold whitespace-nowrap flex items-center space-x-1.5">
+              <Database className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Active Well:</span>
+            </span>
+            <select
+              value={selectedWellKey}
+              onChange={(e) => handleWellChangeRequest(e.target.value)}
+              disabled={isLoadingWell}
+              className="flex-1 bg-wellqc-panel border border-wellqc-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono font-bold"
+            >
+              {uploadWorkspaceLas && (
+                <optgroup label="Active Ingested Workspace">
+                  <option value="upload-session">
+                    📍 {uploadWorkspaceName} ({uploadWorkspaceLas.curves.length} curves, {uploadWorkspaceLas.wellInfo.apiUwi || "Session"})
+                  </option>
+                </optgroup>
+              )}
 
-              {/* Score Improvement Badge */}
-              <div className="flex items-center space-x-3 font-mono">
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block uppercase">Raw Score</span>
-                  <span className="text-sm font-bold text-slate-300">
-                    {cleanedResult.verificationReport.originalQualityScore}% ({cleanedResult.verificationReport.originalGrade})
-                  </span>
-                </div>
-                <ArrowRight className="w-4 h-4 text-emerald-400" />
-                <div className="text-left bg-emerald-500/20 border border-emerald-500/40 px-3 py-1.5 rounded-xl">
-                  <span className="text-[10px] text-emerald-300 block uppercase font-bold">Verified Cleaned</span>
-                  <span className="text-base font-black text-emerald-300">
-                    {cleanedResult.verificationReport.cleanedQualityScore}% ({cleanedResult.verificationReport.cleanedGrade})
-                    <span className="text-xs text-emerald-400 ml-1">
-                      [+{cleanedResult.verificationReport.scoreImprovement}%]
-                    </span>
-                  </span>
-                </div>
-              </div>
+              <optgroup label="Standard Reference Wells">
+                <option value="benchmark-01">
+                  🧪 BENCHMARK-WELL-01 (API-42-990-1029) — Deepwater Basin
+                </option>
+              </optgroup>
+
+              {dbWells.length > 0 && (
+                <optgroup label="Committed Database Wells">
+                  {dbWells.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      🛢️ {w.name} ({w.apiNo}) — {w.fieldName || "Offshore"}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+          {isLoadingWell && <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />}
+        </div>
+
+        {/* 4. Four Stat Cards (Pure Derived Values) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Total Anomalies */}
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-4 flex items-center justify-between shadow-lg">
+            <div>
+              <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold">
+                Total Anomalies
+              </p>
+              <h3 className="text-2xl md:text-3xl font-black text-white font-mono mt-0.5">
+                {statTotal}
+              </h3>
             </div>
-
-            {/* Metrics Breakdown Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-center font-mono text-xs">
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 block">Outliers Clipped</span>
-                <span className="text-base font-black text-cyan-300">
-                  {cleanedResult.verificationReport.outliersRemovedCount}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 block">Spikes Despiked</span>
-                <span className="text-base font-black text-cyan-300">
-                  {cleanedResult.verificationReport.spikesDespikedCount}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 block">Units Converted</span>
-                <span className="text-base font-black text-cyan-300">
-                  {cleanedResult.verificationReport.unitsConvertedCount}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 block">Duplicates Pruned</span>
-                <span className="text-base font-black text-cyan-300">
-                  {cleanedResult.verificationReport.duplicateDepthsPrunedCount}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 block">Nulls Imputed</span>
-                <span className="text-base font-black text-emerald-400">
-                  {cleanedResult.verificationReport.nullsImputedCount}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 block">Flatlines Handled</span>
-                <span className="text-base font-black text-cyan-300">
-                  {cleanedResult.verificationReport.flatlinesHandledCount}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 block">Depth Gaps</span>
-                <span className="text-base font-black text-cyan-300">
-                  {cleanedResult.verificationReport.depthGapsInterpolatedCount}
-                </span>
-              </div>
-            </div>
-
-            {/* Cleaned Curve Downloads Section */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-950/80 p-4 rounded-xl border border-emerald-500/30">
-              <div className="text-xs font-mono text-slate-300">
-                <strong className="text-emerald-400 font-bold">Download Cleaned Versions:</strong> Export production-ready LAS 2.0 or CSV data for your petrophysical models.
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadCleaned("las")}
-                  className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs font-mono shadow transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Cleaned LAS 2.0 (.las)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadCleaned("csv")}
-                  className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs font-mono shadow transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Cleaned CSV (.csv)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveCleanedWell()}
-                  disabled={isSavingCleanedWell}
-                  className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-bold text-xs font-mono transition-all cursor-pointer"
-                >
-                  <Database className="w-3.5 h-3.5" />
-                  <span>{isSavingCleanedWell ? "Saving..." : "Commit Cleaned Log to DB"}</span>
-                </button>
-              </div>
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+              <Layers className="w-5 h-5 text-cyan-400" />
             </div>
           </div>
-        )}
 
-        {/* Wireline Viewer Controls (Raw vs Cleaned Log Switcher) */}
-        <div className="flex items-center justify-between bg-wellqc-card border border-wellqc-border p-3 rounded-xl font-mono text-xs">
-          <div className="flex items-center space-x-2">
-            <Eye className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-300 font-bold">Multi-Track Viewer Mode:</span>
+          {/* Critical */}
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-4 flex items-center justify-between shadow-lg">
+            <div>
+              <p className="text-[11px] font-mono uppercase tracking-wider text-red-400 font-bold">
+                Critical
+              </p>
+              <h3 className="text-2xl md:text-3xl font-black text-red-400 font-mono mt-0.5">
+                {statCritical}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+            </div>
           </div>
-          <div className="flex items-center space-x-1.5">
-            <button
-              type="button"
-              onClick={() => setActiveLogView("raw")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeLogView === "raw"
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Raw Log ({activeLas.wellInfo.wellName})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!cleanedResult) {
-                  void handleExecuteCorrections();
-                } else {
-                  setActiveLogView("cleaned");
-                }
-              }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
-                activeLogView === "cleaned"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Sparkles className="w-3 h-3 text-emerald-400" />
-              <span>Cleaned &amp; Repaired Log</span>
-            </button>
+
+          {/* Warning */}
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-4 flex items-center justify-between shadow-lg">
+            <div>
+              <p className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-bold">
+                Warning
+              </p>
+              <h3 className="text-2xl md:text-3xl font-black text-amber-400 font-mono mt-0.5">
+                {statWarning}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            </div>
+          </div>
+
+          {/* Approved */}
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-4 flex items-center justify-between shadow-lg">
+            <div>
+              <p className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                Approved
+              </p>
+              <h3 className="text-2xl md:text-3xl font-black text-emerald-400 font-mono mt-0.5">
+                {statApproved}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            </div>
           </div>
         </div>
 
-        {/* Multi-Track Wireline Viewer */}
-        <WellLogViewer
-          wellName={
-            activeLogView === "cleaned" && cleanedResult
-              ? `${cleanedResult.cleanedLas.wellInfo.wellName} (CLEANED & VERIFIED)`
-              : `${activeLas.wellInfo.wellName} (RAW UNTOUCHED)`
-          }
-          depthUnit={activeLas.wellInfo.depthUnit}
-          startDepth={activeLas.wellInfo.startDepth}
-          stopDepth={activeLas.wellInfo.stopDepth}
-          curvesData={activeLogView === "cleaned" && cleanedResult ? cleanedResult.cleanedLas.data : activeLas.data}
-          anomalies={activeLogView === "cleaned" && cleanedResult ? cleanedResult.cleanedQa.anomalies : rawQa.anomalies}
-        />
+        {/* 5. Bulk Action Bar (Only appears when 1+ anomalies are selected) */}
+        {selectedIds.size > 0 && firstSelectedType && (
+          <div className="bg-gradient-to-r from-blue-950/80 via-slate-900 to-cyan-950/80 border border-cyan-500/50 p-4 rounded-xl shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-200">
+            <div className="flex items-center space-x-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+              <span className="font-mono text-sm font-bold text-cyan-200">
+                {selectedIds.size} &apos;{firstSelectedType}&apos; anomal{selectedIds.size === 1 ? "y" : "ies"} selected
+              </span>
+            </div>
 
-        {/* Curve Standardisation & Quality Inventory Table */}
-        <CurveInventoryTable
-          curveSummaries={activeLogView === "cleaned" && cleanedResult ? cleanedResult.cleanedQa.curveSummaries : rawQa.curveSummaries}
-          title={activeLogView === "cleaned" ? "Verified Cleaned Curve Inventory" : "Raw Curve Quality & Anomaly Inventory"}
-        />
-
-        {/* Imputation Benchmark Modal */}
-        <ImputationBenchmarkModal
-          las={activeLas}
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          onApplyImputation={handleApplyImputation}
-        />
-
-        {/* Freemium Limit Reached Modal */}
-        {limitReachedModal && (
-          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 text-center animate-in fade-in zoom-in duration-200">
-              <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
-                <AlertTriangle className="w-8 h-8" />
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-xl font-extrabold text-white">
-                  Free Check Limit Reached (2/2 Used)
-                </h3>
-                <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-                  You have used your <strong className="text-white">2 free LAS log file checks</strong> on the Starter plan. Upgrade to <strong className="text-emerald-400">Pro Petrophysicist</strong> for unlimited checks and KNN imputation.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLimitReachedModal(false);
-                    setPaymentModalOpen(true);
-                  }}
-                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all text-center cursor-pointer"
+            <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+              <div className="flex items-center space-x-2">
+                <span className="text-slate-400">Action:</span>
+                <select
+                  value={bulkOptionId}
+                  onChange={(e) => setBulkOptionId(e.target.value)}
+                  className="bg-wellqc-panel border border-cyan-500/40 text-cyan-300 rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-400 font-bold max-w-xs md:max-w-md"
                 >
-                  Upgrade via Paystack (₦75k / $49)
-                </button>
-                <button
-                  onClick={() => setLimitReachedModal(false)}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
-                >
-                  Close
-                </button>
+                  {bulkOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label} {opt.recommended ? "(Recommended)" : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {/* Apply to N selected */}
+              <button
+                onClick={handleApplyBulk}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg shadow transition-all hover:scale-[1.02]"
+              >
+                Apply to {selectedIds.size} selected
+              </button>
+
+              {/* Clear selection */}
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+              >
+                Clear selection
+              </button>
             </div>
           </div>
         )}
 
-        {/* Paystack Payment Modal */}
-        <PaymentModal
-          isOpen={paymentModalOpen}
-          onClose={() => setPaymentModalOpen(false)}
-          defaultPlan="pro_monthly"
+        {/* 6. Anomaly List */}
+        <div className="bg-wellqc-panel border border-wellqc-border rounded-2xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-wellqc-border">
+            <div>
+              <h2 className="text-base font-extrabold text-white tracking-tight">
+                Detected Quality Anomalies
+              </h2>
+              <p className="text-xs text-wellqc-muted font-mono mt-0.5">
+                Each anomaly requires petrophysical approval or explicit rejection. Nothing auto-applies.
+              </p>
+            </div>
+            <span className="text-xs font-mono text-slate-400">
+              {anomalies.length} items
+            </span>
+          </div>
+
+          {anomalies.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 font-mono text-xs">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+              <p>No quality anomalies detected for this well log.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 font-sans">
+              {anomalies.map((anomaly) => {
+                const isSelected = selectedIds.has(anomaly.id);
+                // Disabled & grayed out if type does not match first selected
+                const isDisabledType =
+                  selectedIds.size > 0 && firstSelectedType !== null && anomaly.anomalyType !== firstSelectedType;
+                const isExpanded = expandedAnomalyId === anomaly.id;
+                const options = getCorrectionOptionsForType(anomaly.anomalyType);
+                const currentChosenOptionId =
+                  selectedOptionMap[anomaly.id] || options.find((o) => o.recommended)?.id || options[0]?.id;
+
+                return (
+                  <div
+                    key={anomaly.id}
+                    className={`border rounded-xl transition-all ${
+                      isDisabledType
+                        ? "opacity-35 bg-wellqc-panel/40 border-wellqc-border/40 cursor-not-allowed"
+                        : anomaly.status === "approved"
+                        ? "bg-emerald-500/5 border-emerald-500/30"
+                        : anomaly.status === "rejected"
+                        ? "bg-slate-900/50 border-slate-800"
+                        : isSelected
+                        ? "bg-cyan-500/10 border-cyan-500/50"
+                        : "bg-wellqc-card border-wellqc-border hover:border-slate-700"
+                    }`}
+                  >
+                    {/* Main Anomaly Row Content */}
+                    <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-start space-x-3 flex-1 min-w-0">
+                        {/* Checkbox with strict type-matching rule */}
+                        <div className="pt-1">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={isDisabledType}
+                            onChange={() => handleToggleCheckbox(anomaly)}
+                            className={`w-4 h-4 rounded text-cyan-500 bg-wellqc-dark border-slate-700 focus:ring-cyan-500 ${
+                              isDisabledType ? "cursor-not-allowed" : "cursor-pointer"
+                            }`}
+                          />
+                        </div>
+
+                        {/* Details */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            {/* Severity Badge */}
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-mono font-black uppercase ${
+                                anomaly.severity === "CRITICAL"
+                                  ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                                  : anomaly.severity === "WARNING"
+                                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                  : "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                              }`}
+                            >
+                              {anomaly.severity}
+                            </span>
+
+                            {/* Type — curveMnemonic title */}
+                            <h4 className="text-sm font-bold text-white font-mono tracking-tight">
+                              {anomaly.anomalyType} — {anomaly.curveMnemonic}
+                            </h4>
+
+                            {/* Depth Range */}
+                            <span className="text-[11px] font-mono text-slate-400">
+                              [{anomaly.depthStart.toFixed(1)} – {anomaly.depthEnd.toFixed(1)} {activeLas.wellInfo.depthUnit}]
+                            </span>
+
+                            {/* Current Status Badge */}
+                            {anomaly.status === "approved" && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center space-x-1">
+                                <Check className="w-3 h-3" />
+                                <span>Approved: {anomaly.appliedOptionLabel}</span>
+                              </span>
+                            )}
+                            {anomaly.status === "rejected" && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                                Rejected (Untouched)
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-slate-300 mt-1">{anomaly.description}</p>
+                        </div>
+                      </div>
+
+                      {/* Row Action Buttons: Approve Fix and Reject */}
+                      <div className="flex items-center space-x-2 shrink-0 font-mono text-xs">
+                        <button
+                          onClick={() => handleToggleApproveAccordion(anomaly)}
+                          disabled={isDisabledType}
+                          className={`px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1.5 transition-all ${
+                            anomaly.status === "approved"
+                              ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
+                              : "bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40"
+                          }`}
+                        >
+                          <span>{anomaly.status === "approved" ? "Edit fix" : "Approve fix"}</span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          onClick={() => handleReject(anomaly)}
+                          disabled={isDisabledType}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                            anomaly.status === "rejected"
+                              ? "bg-slate-800 text-slate-500 border border-slate-700"
+                              : "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-red-300 border border-slate-700"
+                          }`}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 4. In-Place Accordion (Expands in place, NOT a modal) */}
+                    {isExpanded && (
+                      <div className="border-t border-wellqc-border bg-wellqc-panel/90 p-4 rounded-b-xl space-y-4 animate-in fade-in slide-in-from-top-1 duration-150 font-sans">
+                        <div className="flex items-center justify-between text-xs font-mono text-slate-400 pb-2 border-b border-wellqc-border">
+                          <span>Select Petrophysical Correction Option:</span>
+                          <span className="text-cyan-400 font-bold">{options.length} options available</span>
+                        </div>
+
+                        {/* Radio List of Options */}
+                        <div className="space-y-2.5">
+                          {options.map((opt) => {
+                            const isRadioSelected = currentChosenOptionId === opt.id;
+                            return (
+                              <label
+                                key={opt.id}
+                                className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                  isRadioSelected
+                                    ? "bg-cyan-500/10 border-cyan-500/50 text-white shadow-sm"
+                                    : "bg-wellqc-card/60 border-wellqc-border/80 text-slate-300 hover:bg-wellqc-card"
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`opt-${anomaly.id}`}
+                                  value={opt.id}
+                                  checked={isRadioSelected}
+                                  onChange={() =>
+                                    setSelectedOptionMap((prev) => ({ ...prev, [anomaly.id]: opt.id }))
+                                  }
+                                  className="mt-1 w-4 h-4 text-cyan-500 bg-wellqc-dark border-slate-700 focus:ring-cyan-500"
+                                />
+                                <div className="flex-1 text-xs">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-bold">{opt.label}</span>
+                                    {opt.recommended && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                        Recommended
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">{opt.description}</p>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        {/* Accordion Buttons: Confirm & Apply vs Cancel */}
+                        <div className="flex items-center justify-end space-x-3 pt-2 font-mono text-xs">
+                          <button
+                            onClick={() => setExpandedAnomalyId(null)}
+                            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleConfirmApprove(anomaly)}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg shadow-md transition-all hover:scale-[1.02]"
+                          >
+                            Confirm &amp; apply
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 7. Graph: Cleaned Log Viewer (Bottom of the Page) */}
+        <CleanedLogViewer
+          wellName={currentWellName}
+          field={activeLas.wellInfo.field || "Deepwater Basin"}
+          operator={activeLas.wellInfo.company || "WellQC+ Telemetry"}
+          depthUnit={activeLas.wellInfo.depthUnit || "FT"}
+          rawLas={activeLas}
+          cleanedLas={cleanedLas}
         />
       </div>
+
+      {/* Confirmation Dialog Before Switching Wells (Don't discard silent work) */}
+      {showSwitchConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-wellqc-panel border border-wellqc-border rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 font-sans">
+            <div className="flex items-center space-x-3 text-amber-400">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="text-lg font-bold text-white font-mono">Unsaved Approvals</h3>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              You have approved fixes on this well that have not been applied yet. Switching wells will reset your
+              approvals and discard this work.
+            </p>
+            <div className="flex items-center justify-end space-x-3 pt-2 font-mono text-xs">
+              <button
+                onClick={() => {
+                  setShowSwitchConfirmModal(false);
+                  setPendingWellSwitchKey(null);
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg"
+              >
+                Stay on current well
+              </button>
+              <button
+                onClick={confirmDiscardAndSwitch}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg"
+              >
+                Discard &amp; switch well
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

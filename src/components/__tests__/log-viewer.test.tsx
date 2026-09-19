@@ -117,4 +117,30 @@ describe("WellLogViewer Layout Switcher", () => {
     expect(screen.getByText(/BOREHOLE LOG: Explorer-01/i)).toBeInTheDocument();
     expect(screen.getByText(/Well Log Numerical Spreadsheet/i)).toBeInTheDocument();
   });
+
+  it("renders resistivity on a logarithmic scale and gamma ray / sonic on a linear scale", () => {
+    render(
+      <WellLogViewer
+        wellName="Explorer-01"
+        depthUnit="FT"
+        startDepth={4000}
+        stopDepth={4002}
+        curvesData={mockCurvesData}
+      />
+    );
+
+    // Track 2 header indicates logarithmic scale
+    expect(screen.getByText(/RESISTIVITY \(LOG\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/RT \(ohm\.m\) — Logarithmic Scale/i)).toBeInTheDocument();
+
+    // Decade ticks for logarithmic scale
+    expect(screen.getByText("0.2")).toBeInTheDocument();
+    expect(screen.getByText("2000")).toBeInTheDocument();
+
+    // Track 1 (Gamma Ray) and Track 3 (Sonic) linear headers
+    expect(screen.getByText(/GAMMA RAY/i)).toBeInTheDocument();
+    expect(screen.getByText(/GR \(GAPI\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/SONIC/i)).toBeInTheDocument();
+    expect(screen.getByText(/DT \(µs\/ft\)/i)).toBeInTheDocument();
+  });
 });

@@ -15,7 +15,9 @@ The WellQC+ platform is structured as a full-stack, enterprise-grade AI well log
 ### 1. Core Petrophysical & AI Engines (`src/lib/las/`)
 * **LAS Parser Engine ([`parser.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/parser.ts))**: Native TypeScript parser for LAS 2.0/3.0 files (`~Version`, `~Well`, `~Curve`, and `~ASCII` sections), normalizes null indicators (`-999.25`, `-9999`, `NaN`), and handles depth intervals.
 * **Quality Scoring Engine ([`quality-engine.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/quality-engine.ts))**: Audits 7 Core Required Curves (`GR`, `RHOB`, `NPHI`, `DT`, `RT`, `CALI`, `SP`) and detects all 11 user-specified anomaly categories (`DUPLICATE_DEPTH`, `DEPTH_GAP`, `NULL_CLUSTER`, `IMPOSSIBLE_VALUE`, `OUTLIER_VALUE`, `EXTREME_SPIKE` with calibrated DT cycle-skip sensitivity, `FLATLINE`, `UNIT_MISMATCH`, `NON_STANDARD_MNEMONIC`, `DUPLICATE_CURVE`, and `MISSING_CORE_CURVE`). Computes Curve Health, Completeness, Consistency, and composite Quality Score ($0\text{--}100$).
+* **Anomaly Correction Options Dictionary ([`anomaly-options.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/anomaly-options.ts))** *(NEW — Sprint 5)*: Standardized petrophysical correction options dictionary for all 11 anomaly types with detailed technical descriptions, unique option IDs, and pre-selected `recommended: true` primary fixes.
 * **Automated Data Cleaning & Repair Engine ([`cleaner.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/cleaner.ts))**: Core data modification engine executing duplicate depth pruning, depth gap alignment, physical outlier clipping, DT sonic despiking (5-point median window), unit conversions, flatline stuck-sensor handling, and missing gap imputation (`KNN`, `Linear`, `Median`). Generates Before vs After verification reports and cleaned LAS 2.0 / CSV text files.
+* **Anomaly Fix Application & Audit Endpoint ([`apply-fixes/route.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/api/las/apply-fixes/route.ts))** *(NEW — Sprint 5)*: REST API endpoint applying approved anomaly fixes to LAS datasets while logging individual, transparent audit entries per anomaly to `ActivityLog`.
 * **AI Recommendation Engine ([`ai-analyzer.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/ai-analyzer.ts))**: Rule-based expert system generating natural-language petrophysical risk summaries, confidence scores, and remediation steps.
 * **Mnemonic Standardiser ([`standardiser.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/standardiser.ts))**: Maps raw vendor mnemonics (`GAMMA`, `DEN`, `CNL`, `ILD`, `AC`) to standard API mnemonics (`GR`, `RHOB`, `NPHI`, `RT`, `DT`) with confidence weighting, custom alias persistence, and `updateActiveUploadWithNewAlias()` auto-propagation.
 * **Missing Value & Imputation Engine ([`imputation-engine.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/imputation-engine.ts))**: Diagnoses 4 root causes (casing shoe, washout, telemetry dropout, off-bottom) and benchmarks 5 imputation algorithms (KNN, Cubic Spline, Linear, Mean, Median) with ground-truth cross-validation calculating RMSE, MAE, R², variance preservation, and speed.
@@ -29,17 +31,26 @@ The WellQC+ platform is structured as a full-stack, enterprise-grade AI well log
 
 ### 3. Application UI & Dashboard Modules (`src/app/`)
 * **Navigation & Shell**: `app-shell.tsx`, responsive `sidebar.tsx` with mobile drawer, and `header.tsx` with RBAC role switcher (`ADMIN`, `PETROPHYSICIST`, `DATA_ENGINEER`, `GEOSCIENTIST`, `VIEWER`), plus **Global Live Search Bar** featuring real-time matching overlay dropdown, keyboard navigation (`Enter` / `Escape`), and URL search parameter synchronization (`/wells?search=...`).
-* **Upload Workspace ([`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx))**: Strict "Detect and Flag Only" stage — original raw LAS file remains untouched. Features the 11 Anomaly Audit Checks Grid, 4 Summary Metric Cards, Untouched Raw Multi-Track Viewer, and direct CTAs to `/reports` and `/qa-engine`.
-* **Quality Engine Page ([`qa-engine/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/qa-engine/page.tsx))**: The dedicated stage for all data modification and repair. Features Active Wells Selection Dropdown (Current Upload Session, Committed DB Wells, Reference Logs), granular anomaly correction switches (Duplicate Depths, Depth Gaps, Imputation, Unit Conversions, Physical Clipping, DT Despiking, Flatlines), Before vs After score verification, and direct downloads for Cleaned LAS 2.0 (`.las`) and Cleaned CSV (`.csv`).
-* **Audit Reports Page ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx))**: Clear demarcation into **1. Anomaly Document** (PDF QA/QC Audit Certificate and Excel Anomaly Findings Sheet) and **2. Cleaned Document** (Cleaned LAS 2.0, Cleaned CSV, Cleaned Curves Excel), supporting both active upload sessions and committed database wells.
+* **Upload Workspace ([`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx))**: Strict "Detect and Flag Only" stage — original raw LAS file remains untouched. Features the 11 Anomaly Audit Checks Grid, 4 Summary Metric Cards, Untouched Raw Multi-Track Viewer with **logarithmic resistivity scale ($0.2\text{--}2000\ \Omega\cdot\text{m}$)** and linear gamma/sonic tracks, and direct CTAs to `/reports` and `/qa-engine`.
+* **Quality Engine Page ([`qa-engine/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/qa-engine/page.tsx))** *(REDESIGNED — Sprint 5)*: Comprehensive top-to-bottom layout:
+  1. App Sidebar with active "Quality engine" highlight.
+  2. Header row with title, `"Apply approved fixes"`, `"Export audit log"`, and `"Download cleaned LAS"`.
+  3. Active Wells Dropdown (Upload Workspace, Committed DB Wells, Reference Logs) with confirmation modal protecting unapplied approvals.
+  4. Four Live Derived Stat Cards (`Total`, `Critical`, `Warning`, `Approved`).
+  5. Type-Isolated Bulk Action Bar (automatically grays out differing anomaly types to enforce mathematical consistency).
+  6. Anomaly list with in-place accordion approvals, radio options (recommended pre-selected), and immediate rejection.
+  7. 3-Track Cleaned Log Viewer with Compare-to-Raw overlay.
+* **Audit Reports Page ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx))**: Clear demarcation into **1. Anomaly Document** (PDF QA/QC Audit Certificate and Excel Anomaly Findings Sheet) and **2. Cleaned Document** (Cleaned LAS 2.0, Cleaned CSV, Cleaned Curves Excel), supporting direct download of verified cleaned LAS files produced in Quality Engine.
 * **Quality Control Command Center (`dashboard/page.tsx`)**: 8 live telemetry KPI cards, 7-day rolling quality trend chart, field performance breakdown, and problem wells list.
 * **Asset & Well Management ([`wells/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/page.tsx), [`wells/[id]/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/wells/%5Bid%5D/page.tsx))**: Well inventories, geographic coordinates, curve channels, audit history, **`CurveInventoryTable` component**, and **URL-based search query filtering**.
-* **Jest & RTL Automated Test Suite**: 4 passing test suites (`parser.test.ts`, `quality-engine.test.ts`, `cleaner.test.ts`, `header.test.tsx`), 8/8 tests green, and zero TypeScript compilation errors.
+* **Jest & RTL Automated Test Suite**: 6 passing test suites (`parser.test.ts`, `quality-engine.test.ts`, `cleaner.test.ts`, `header.test.tsx`, `log-viewer.test.tsx`, `cleaned-log-viewer.test.tsx`), 16/16 tests green, and zero TypeScript compilation errors.
 * **Specialized Pages**: Standardisation Dictionary (`standardisation/page.tsx`), Analytics (`analytics/page.tsx`), Well Comparison (`comparison/page.tsx`), Activity Log (`activity/page.tsx`), and Admin Panel (`admin/page.tsx`).
 
 ### 4. Reusable Well-Log Components (`src/components/well-log/`)
-* **Multi-Track Log Viewer ([`log-viewer.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx))**: SVG-rendered wireline tracks with Classic Paper and Dark Subsurface themes.
-* **Curve Inventory Table ([`curve-inventory-table.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/curve-inventory-table.tsx))** *(NEW — Sprint 5)*: Reusable component displaying Raw Mnemonic → Standard Name mapping, Unit, Null %, Data Range, Health Score (colour-coded), and expandable anomaly flag details per curve. Used in both the Upload Workspace and Well Detail pages.
+* **Multi-Track Log Viewer ([`log-viewer.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx))**: Interactive borehole wireline log visualizer featuring a 3-way layout switcher (Log Plot `GRAPH`, Split View `SPLIT`, and Data Table `TABLE`), Classic Paper and Dark Subsurface themes, interactive vertical zoom (0.6× to 3.0×), synchronized depth selection, and printable logs. **Resistivity curves strictly render on a 4-decade logarithmic scale ($0.2\text{--}2000\ \Omega\cdot\text{m}$)** with logarithmic decade gridlines, while Gamma Ray ($0\text{--}150\ \text{GAPI}$) and Sonic ($40\text{--}240\ \mu\text{s/ft}$) render on linear scales.
+* **3-Track Cleaned Log Viewer ([`cleaned-log-viewer.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/cleaned-log-viewer.tsx))** *(NEW — Sprint 5)*: Dedicated wireline log visualizer for Quality Engine featuring dynamic Track 1, Track 2, and Track 3 selectors populated from all raw LAS curves, classic borehole header box (Log Code, Field, Depth Range, Operator, Scale), logarithmic resistivity scaling, and a synchronized **"Compare to raw (pre-clean)"** overlay drawing solid cleaned curves on top of dashed muted gray pre-cleaning traces.
+* **Interactive Well Log Data Table ([`log-data-table.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-data-table.tsx))**: Numerical borehole spreadsheet displaying depth intervals and all curve channels with standardized mnemonic headers, configurable pagination (50/100/250 rows), instant "Jump to Depth" navigation with row highlighting, granular filtering (All, Anomalies Only, Nulls Only), NULL badges, severity-coded anomaly tags, and direct CSV export.
+* **Curve Inventory Table ([`curve-inventory-table.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/curve-inventory-table.tsx))**: Reusable component displaying Raw Mnemonic → Standard Name mapping, Unit, Null %, Data Range, Health Score (colour-coded), and expandable anomaly flag details per curve. Used in both the Upload Workspace and Well Detail pages.
 * **Imputation Benchmark Modal (`imputation-benchmark-modal.tsx`)**: Multi-method algorithm comparison UI.
 
 ### 5. Database & Infrastructure (`prisma/`)
@@ -204,6 +215,51 @@ Architecture    & Auth Setup  LAS Ingestion   Visualisation Monetization     Rel
   2. **Cleaned Document**: Cleaned LAS 2.0 File (`.las`), Cleaned CSV (`.csv`), and Cleaned Curves Excel (`.xlsx`).
 * Extended target well selection to support both the active upload session and database records.
 
+**SE1 & SE2 — Synchronized Well Log Tabular Spreadsheet, Split View & Layout Switcher** *(Completed 18 Sep 2026)*
+* Built [`WellLogDataTable`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-data-table.tsx) component (`src/components/well-log/log-data-table.tsx`) delivering an interactive numerical borehole spreadsheet with standardised curve headers (`standardiseMnemonic`), multi-page pagination (50/100/250 rows), instant "Jump to Depth" numerical navigation with visual row highlighting, sample counter, and client-side CSV table export.
+* Implemented granular table filtering modes: "All Samples", "Anomalies Only" (filters table to depth intervals containing detected anomalies), and "Nulls Only" (filters table to depths where curve sensors experienced nulls or sentinel values).
+* Upgraded [`WellLogViewer`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx) with a dynamic 3-way Layout Switcher:
+  1. **Log Plot (`GRAPH`)**: Full-screen multi-track graphical wireline plot with Track 1 (`GR`/`SP`/`CALI`), Track 2 (`RT` logarithmic scale), and Track 3 (`DT`/`RHOB`/`NPHI`).
+  2. **Split View (`SPLIT`)**: Side-by-side synchronized view with Wireline curves SVG on the left and `WellLogDataTable` on the right, enabling simultaneous visual curve inspection and depth-correlated numerical auditing with bidirectional depth selection (`onDepthSelect`).
+  3. **Data Table (`TABLE`)**: Full numerical spreadsheet mode.
+* Retained Classic Borehole Paper Log (`CLASSIC_PAPER`) and Dark Subsurface (`DARK_MODERN`) styling, vertical scale zoom controls (0.6× to 3.0×), and print log functionality.
+* Created automated Jest & RTL test suite in [`src/components/__tests__/log-viewer.test.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/__tests__/log-viewer.test.tsx) testing `WellLogDataTable` rendering, sample count, NULL badges, Jump to Depth handler, Nulls Only filter, and `WellLogViewer` layout toggling (bringing the test suite to 5 suites, 12/12 passing tests).
+
+**SE1 & SE2 — Logarithmic Resistivity Scaling & Linear Acoustic/Gamma Scaling** *(Completed 19 Sep 2026)*
+* Updated `mapValueToX` in [`log-viewer.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx) to strictly enforce **logarithmic scaling ($0.2\text{ to }2000\ \Omega\cdot\text{m}$)** for Resistivity curves (`RT`, `RES`, `ILD`, `LLD`, `LLS`) using $X = \frac{\log_{10}(\text{val}) - \log_{10}(\text{min})}{\log_{10}(\text{max}) - \log_{10}(\text{min})} \times \text{trackWidth}$, with vertical decade grid lines and decade scale markers ($0.2, 2, 20, 200, 2000\ \Omega\cdot\text{m}$) in both Classic Paper and Modern Dark views.
+* Preserved strict **linear scaling** for Gamma Ray ($0\text{ to }150\ \text{GAPI}$) and Sonic logs ($40\text{ to }240\ \mu\text{s/ft}$).
+* Applied seamlessly to the LAS Upload & QA page ([`upload/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/upload/page.tsx)) and borehole log visualizers across the platform.
+
+**SE1 & SE2 — Quality Engine Layout Redesign & Workflow Overhaul** *(Completed 19 Sep 2026)*
+* Restructured [`qa-engine/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/qa-engine/page.tsx) into the exact user-specified top-to-bottom layout:
+  1. Sidebar navigation with active Quality Engine highlight.
+  2. Header row with title + three buttons: `"Apply approved fixes"`, `"Export audit log"`, and `"Download cleaned LAS"`.
+  3. Active Wells Dropdown (Upload Session, Reference Wells, Committed DB Wells) with confirmation modal protecting unapplied approvals.
+  4. Four Live Derived Stat Cards (`Total`, `Critical`, `Warning`, `Approved`) recalculated instantly on any state change without extra network fetches.
+  5. **Type-Isolated Bulk Action Bar**: Checking an anomaly dynamically disables and grays out checkboxes for all differing anomaly types, preventing invalid cross-type operations while enabling one-click bulk approval.
+  6. Anomaly list with **in-place accordion** for `"Approve fix"` (radio list of options with recommended default, `"Confirm & apply"`, and `"Cancel"`), immediate `"Reject"` (marking status rejected without prompting), and zero auto-applying behavior.
+  7. 3-Track Cleaned Log Viewer embedded at the bottom.
+
+**SE1 & DA4 — Individual Anomaly Audit Logging & Cleaned LAS Export Integration** *(Completed 19 Sep 2026)*
+* Created [`anomaly-options.ts`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/anomaly-options.ts) providing petrophysical correction options for all 11 anomaly categories with recommended flags.
+* Built API endpoint [`/api/las/apply-fixes`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/api/las/apply-fixes/route.ts) that applies approved fixes to LAS data and records individual `ActivityLog` audit entries per anomaly.
+* Enabled `"Export audit log"` on the Quality Engine page downloading a full CSV history of all approve/reject/apply actions.
+* Integrated `"Download cleaned LAS"` on both Quality Engine and Audit Reports ([`reports/page.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/reports/page.tsx)) pages, ensuring verified post-correction LAS files are immediately available upon applying fixes.
+
+**SE1 & SE2 — 3-Track Cleaned Log Viewer with Compare-to-Raw Overlay** *(Completed 19 Sep 2026)*
+* Built [`CleanedLogViewer`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/cleaned-log-viewer.tsx) (`src/components/well-log/cleaned-log-viewer.tsx`) featuring:
+  - Header bar with view mode toggle (`Classic Paper` vs `Modern Dark`), zoom controls (out, in, reset), and print button.
+  - Control bar with Track 1, Track 2, and Track 3 dropdown selectors dynamically populated from all curves in the raw LAS file (`~C` section).
+  - **"Compare to raw (pre-clean)"** checkbox overlaying solid colored cleaned curves on top of dashed muted gray pre-cleaning baseline traces across all 3 tracks.
+  - Wireline header box (Log Code `ISS 102`, Field, Depth Range, Operator, Scale).
+  - Strict logarithmic resistivity scaling and linear acoustic/gamma scaling.
+
+**SE1 & CE1 — Automated Test Suite Expansion & Production Build Verification** *(Completed 19 Sep 2026)*
+* Created [`cleaned-log-viewer.test.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/__tests__/cleaned-log-viewer.test.tsx) testing 3-track rendering, logarithmic resistivity scaling, compare-to-raw toggling, and anomaly options recommendations.
+* Extended [`log-viewer.test.tsx`](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/__tests__/log-viewer.test.tsx) with logarithmic scale assertions.
+* Full test suite verification: **6 test suites passing, 16/16 tests green (100% pass rate)**.
+* Executed full Next.js production build (`npm run build`) with zero compiler or type errors across all 39 static and dynamic routes.
+
 #### 🔄 Remaining Sprint 5 Items
 
 * **CE1:** Execute final load testing for concurrent LAS uploads; verify Vercel serverless function timeouts.
@@ -301,8 +357,17 @@ WellQC+ Development Team (8 Members)
 | 5.21 | Upload Page: Strict "Detect and Flag Only" & 11 Anomaly Checks Grid | SE2 | ✅ Done | 14 Sep 2026 | `upload/page.tsx` |
 | 5.22 | Dedicated Quality Engine Page: Active Wells, Granular Toggles & Downloads | SE2 | ✅ Done | 14 Sep 2026 | `qa-engine/page.tsx`, `cleaner.ts` |
 | 5.23 | Reports Page: Demarcated Anomaly Document & Cleaned Document Tabs | DA4 | ✅ Done | 14 Sep 2026 | `reports/page.tsx` |
+| 5.24 | Interactive Well Log Data Table component (`WellLogDataTable`) | SE1 & SE2 | ✅ Done | 18 Sep 2026 | `log-data-table.tsx` [NEW] |
+| 5.25 | Log Viewer 3-Way Layout Switcher (Log Plot, Split View, Data Table) & depth sync | SE1 & SE2 | ✅ Done | 18 Sep 2026 | `log-viewer.tsx` |
+| 5.26 | Log Viewer & Data Table Jest/RTL Test Suite (5 suites, 12/12 passing) | SE1 | ✅ Done | 18 Sep 2026 | `log-viewer.test.tsx` [NEW] |
+| 5.27 | Logarithmic Resistivity Scaling ($0.2\text{--}2000\ \Omega\cdot\text{m}$) & Linear GR/DT | SE1 | ✅ Done | 19 Sep 2026 | `log-viewer.tsx`, `upload/page.tsx` |
+| 5.28 | Standard Anomaly Correction Options Dictionary (11 categories) | DA1 & SE1 | ✅ Done | 19 Sep 2026 | `anomaly-options.ts` [NEW] |
+| 5.29 | Quality Engine Layout Overhaul: Top-to-Bottom Layout, Derived Stats & Bulk Bar | SE2 | ✅ Done | 19 Sep 2026 | `qa-engine/page.tsx` |
+| 5.30 | Anomaly Fix In-Place Accordion & Single-Anomaly Audit Trail API | SE1 & SE2 | ✅ Done | 19 Sep 2026 | `qa-engine/page.tsx`, `apply-fixes/route.ts` [NEW] |
+| 5.31 | 3-Track Cleaned Log Viewer with Compare-to-Raw Overlay & Wireline Header | SE1 & SE2 | ✅ Done | 19 Sep 2026 | `cleaned-log-viewer.tsx` [NEW] |
+| 5.32 | Cleaned Log Viewer Jest Suite & Cleaned LAS Export across QA Engine & Reports | SE1 & DA4 | ✅ Done | 19 Sep 2026 | `cleaned-log-viewer.test.tsx` [NEW], `reports/page.tsx` |
 
 ---
 
-> **WellQC+ v2.6.0-Enterprise** | Master Development Sprint Plan & Ownership Matrix  
-> Updated 14 Sep 2026 · Grounded 100% in Codebase · 8 Team Members (2 SE, 4 DA, 2 CE) · 6 Sprints.
+> **WellQC+ v2.8.0-Enterprise** | Master Development Sprint Plan & Ownership Matrix  
+> Updated 19 Sep 2026 · Grounded 100% in Codebase · 8 Team Members (2 SE, 4 DA, 2 CE) · 6 Sprints.

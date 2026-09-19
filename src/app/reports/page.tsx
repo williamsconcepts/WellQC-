@@ -497,9 +497,32 @@ export default function ReportsPage() {
   const generateCleanedLASExport = async () => {
     await runExport(async () => {
       const detail = await loadDetail();
+      // Check if a verified cleaned LAS file was generated in Quality Engine
+      let content = "";
+      try {
+        const cached = localStorage.getItem(`wellqc_cleaned_las_${selectedWellId}`);
+        if (cached && cached.trim().length > 0) {
+          content = cached;
+        } else {
+          const latest = localStorage.getItem("wellqc_latest_cleaned_las");
+          if (latest) {
+            const parsed = JSON.parse(latest);
+            if (parsed.cleanedLasText && (parsed.wellId === selectedWellId || selectedWellId === "upload-session")) {
+              content = parsed.cleanedLasText;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not read cached cleaned LAS from Quality Engine:", e);
+      }
+
+      if (!content) {
+        content = buildLasFromDetail(detail);
+      }
+
       downloadTextFile(
         `${fileStem(detail.well.name)}_cleaned.las`,
-        buildLasFromDetail(detail),
+        content,
         "application/octet-stream;charset=utf-8"
       );
     });

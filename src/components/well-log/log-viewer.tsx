@@ -89,7 +89,21 @@ export function WellLogViewer({
   const dtGaps = getMissingGaps(dtValues);
 
   // Helper to map curve values to SVG X coordinates (0 to 100% of track width)
-  const mapValueToX = (val: number, min: number, max: number, trackWidth: number) => {
+  const mapValueToX = (
+    val: number,
+    min: number,
+    max: number,
+    trackWidth: number,
+    isLogScale: boolean = false
+  ) => {
+    if (isLogScale) {
+      const positiveMin = min > 0 ? min : 0.2;
+      const positiveMax = max > positiveMin ? max : 2000;
+      const safeVal = Math.max(positiveMin, Math.min(positiveMax, val <= 0 ? positiveMin : val));
+      const logMin = Math.log10(positiveMin);
+      const logMax = Math.log10(positiveMax);
+      return ((Math.log10(safeVal) - logMin) / (logMax - logMin)) * trackWidth;
+    }
     const clamped = Math.max(min, Math.min(max, val));
     return ((clamped - min) / (max - min)) * trackWidth;
   };
@@ -110,12 +124,13 @@ export function WellLogViewer({
     minVal: number,
     maxVal: number,
     trackWidth: number,
-    color: string
+    color: string,
+    isLogScale: boolean = false
   ) => {
     const points: string[] = [];
     series.forEach((val, idx) => {
       if (val !== -999.25 && val !== -9999 && !isNaN(val) && val !== null && val !== undefined) {
-        const x = mapValueToX(val, minVal, maxVal, trackWidth);
+        const x = mapValueToX(val, minVal, maxVal, trackWidth, isLogScale);
         const y = mapDepthToY(depthArr[idx]);
         points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
       }
@@ -179,10 +194,13 @@ export function WellLogViewer({
             {/* TRACK 2 Header */}
             <div className="col-span-4 border-r-2 border-black p-1 bg-white">
               <div className="text-xs uppercase border-b border-black pb-0.5">TRACK 2</div>
-              <div className="text-sm font-black text-red-600">RESISTIVITY</div>
-              <div className="text-xs text-red-600 font-mono">RT (ohm.m)</div>
-              <div className="flex justify-between text-[11px] font-mono px-2 pt-1 border-t border-slate-300 mt-1">
+              <div className="text-sm font-black text-red-600">RESISTIVITY (LOG)</div>
+              <div className="text-xs text-red-600 font-mono">RT (ohm.m) — Logarithmic Scale</div>
+              <div className="flex justify-between text-[10px] font-mono px-1 pt-1 border-t border-slate-300 mt-1">
                 <span>0.2</span>
+                <span>2</span>
+                <span>20</span>
+                <span>200</span>
                 <span>2000</span>
               </div>
             </div>
@@ -275,16 +293,23 @@ export function WellLogViewer({
                 })}
               </div>
 
-              {/* TRACK 2 (RESISTIVITY - Red) */}
+              {/* TRACK 2 (RESISTIVITY - Red, Logarithmic Scale) */}
               <div className="col-span-4 border-r-2 border-black relative">
-                <svg className="w-full h-full overflow-visible">
+                {/* Logarithmic Decade Vertical Grid Lines */}
+                <div className="absolute inset-0 pointer-events-none flex justify-between px-0">
+                  <div className="border-r border-red-200/60 h-full w-[25%]" />
+                  <div className="border-r border-red-200/60 h-full w-[25%]" />
+                  <div className="border-r border-red-200/60 h-full w-[25%]" />
+                  <div className="h-full w-[25%]" />
+                </div>
+                <svg className="w-full h-full overflow-visible relative z-10">
                   <polyline
                     fill="none"
                     stroke="#dc2626"
                     strokeWidth="2.5"
                     strokeLinejoin="round"
                     strokeLinecap="round"
-                    points={renderSvgCurve(rtValues, 0.2, 2000, 300, "#dc2626")}
+                    points={renderSvgCurve(rtValues, 0.2, 2000, 300, "#dc2626", true)}
                   />
                 </svg>
 
@@ -390,16 +415,23 @@ export function WellLogViewer({
           {/* Track 2 Dark */}
           <div className="bg-wellqc-panel border border-wellqc-border rounded-xl p-3">
             <div className="flex items-center justify-between pb-2 border-b border-wellqc-border mb-2 text-xs font-bold text-red-400">
-              <span>TRACK 2: RESISTIVITY (RT)</span>
-              <span>0.2 – 2000 OHMM</span>
+              <span>TRACK 2: RESISTIVITY (RT) [LOG]</span>
+              <span>0.2 – 2000 OHMM (Logarithmic)</span>
             </div>
             <div className="h-96 relative bg-wellqc-dark rounded-lg overflow-hidden p-2 border border-wellqc-border">
-              <svg className="w-full h-full overflow-visible">
+              {/* Decade guide lines */}
+              <div className="absolute inset-0 pointer-events-none flex justify-between px-0">
+                <div className="border-r border-red-500/10 h-full w-[25%]" />
+                <div className="border-r border-red-500/10 h-full w-[25%]" />
+                <div className="border-r border-red-500/10 h-full w-[25%]" />
+                <div className="h-full w-[25%]" />
+              </div>
+              <svg className="w-full h-full overflow-visible relative z-10">
                 <polyline
                   fill="none"
                   stroke="#ef4444"
                   strokeWidth="2"
-                  points={renderSvgCurve(rtValues, 0.2, 2000, 240, "#ef4444")}
+                  points={renderSvgCurve(rtValues, 0.2, 2000, 240, "#ef4444", true)}
                 />
               </svg>
             </div>

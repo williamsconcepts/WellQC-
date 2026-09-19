@@ -22,12 +22,13 @@ We have designed, built, and verified **WellQC+**, an enterprise-grade cloud pla
   - Flatline sensors (> 25 consecutive identical steps).
 - **AI Summary Engine**: [ai-analyzer.ts](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/lib/las/ai-analyzer.ts) generates natural-language interval recommendations.
 
-### 4. Interactive Petrophysical Log Curve Viewer
-- **Multi-Track Viewer**: [log-viewer.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx) renders multi-track log tracks:
-  - **Track 1**: Gamma Ray (GR) & SP
-  - **Track 2**: Deep Resistivity (RT)
-  - **Track 3**: Density (RHOB) vs Porosity (NPHI) crossover
-  - **Anomaly Ribbon**: Depth-indexed flags with interactive tooltips.
+### 4. Interactive Petrophysical Log Curve Viewer & Numerical Spreadsheet
+- **Multi-Track Viewer with 3-Way Layout Switcher**: [log-viewer.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-viewer.tsx) provides a toolbar-controlled layout switcher:
+  - **Log Plot (`GRAPH`)**: Graphical multi-track wireline rendering (Track 1 GR/SP/CALI, Track 2 RT logarithmic scale, Track 3 DT/RHOB/NPHI crossover, and anomaly ribbons).
+  - **Split View (`SPLIT`)**: Synchronized side-by-side view pairing the wireline curve plot with the numerical spreadsheet for simultaneous visual inspection and depth-correlated numerical auditing.
+  - **Data Table (`TABLE`)**: Full numerical spreadsheet view.
+  - **Styling & Controls**: Classic Borehole Paper Log (`CLASSIC_PAPER`) and Dark Subsurface (`DARK_MODERN`) themes, vertical scale zoom controls (0.6× to 3.0×), synchronized depth selection, and print functionality.
+- **Interactive Numerical Spreadsheet Component**: [log-data-table.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/components/well-log/log-data-table.tsx) renders depth intervals and all curve channels with standardized mnemonic headers, configurable pagination (50/100/250 rows), instant "Jump to Depth" navigation with row highlighting, granular filtering (All, Anomalies Only, Nulls Only), NULL indicators, anomaly badges, and direct CSV export.
 
 ### 5. Enterprise Dashboard & Feature Modules
 - **Command Dashboard**: [dashboard/page.tsx](file:///c:/Users/Ekwebelam%20C%20Williams/Desktop/WellQC+/src/app/dashboard/page.tsx) featuring 8 telemetry cards, 7-day rolling quality trend chart, field performance breakdown, top problem wells, and recent activity feed.
